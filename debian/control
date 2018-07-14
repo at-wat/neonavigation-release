@@ -1,0 +1,12 @@
+Source: ros-indigo-costmap-cspace
+Section: misc
+Priority: extra
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-indigo-catkin, ros-indigo-costmap-cspace-msgs, ros-indigo-geometry-msgs, ros-indigo-laser-geometry, ros-indigo-nav-msgs, ros-indigo-neonavigation-common, ros-indigo-roscpp, ros-indigo-roslint, ros-indigo-rostest, ros-indigo-sensor-msgs, ros-indigo-tf, ros-indigo-tf2-sensor-msgs, ros-indigo-xmlrpcpp
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-indigo-costmap-cspace
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-indigo-costmap-cspace-msgs, ros-indigo-geometry-msgs, ros-indigo-laser-geometry, ros-indigo-nav-msgs, ros-indigo-neonavigation-common, ros-indigo-roscpp, ros-indigo-sensor-msgs, ros-indigo-tf, ros-indigo-tf2-sensor-msgs, ros-indigo-xmlrpcpp
+Description: 3-dof configuration space costmap package
