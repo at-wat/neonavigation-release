@@ -1,0 +1,12 @@
+Source: ros-lunar-planner-cspace
+Section: misc
+Priority: extra
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-lunar-actionlib, ros-lunar-catkin, ros-lunar-costmap-cspace, ros-lunar-costmap-cspace-msgs, ros-lunar-geometry-msgs, ros-lunar-move-base-msgs, ros-lunar-nav-msgs, ros-lunar-neonavigation-common, ros-lunar-planner-cspace-msgs, ros-lunar-roscpp, ros-lunar-roslint, ros-lunar-rostest, ros-lunar-sensor-msgs, ros-lunar-std-srvs, ros-lunar-tf, ros-lunar-trajectory-msgs
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-lunar-planner-cspace
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-lunar-actionlib, ros-lunar-costmap-cspace, ros-lunar-costmap-cspace-msgs, ros-lunar-geometry-msgs, ros-lunar-move-base-msgs, ros-lunar-nav-msgs, ros-lunar-neonavigation-common, ros-lunar-planner-cspace-msgs, ros-lunar-roscpp, ros-lunar-sensor-msgs, ros-lunar-std-srvs, ros-lunar-tf, ros-lunar-trajectory-msgs
+Description: 3-dof configuration space planner for mobile robot
