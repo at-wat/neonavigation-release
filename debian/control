@@ -1,0 +1,12 @@
+Source: ros-lunar-neonavigation
+Section: misc
+Priority: extra
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-lunar-catkin
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-lunar-neonavigation
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-lunar-costmap-cspace, ros-lunar-joystick-interrupt, ros-lunar-map-organizer, ros-lunar-neonavigation-common, ros-lunar-neonavigation-launch, ros-lunar-obj-to-pointcloud, ros-lunar-planner-cspace, ros-lunar-safety-limiter, ros-lunar-track-odometry, ros-lunar-trajectory-tracker
+Description: The neonavigation meta-package including 3-dof configuration space planner
