@@ -7,32 +7,34 @@ find_package(catkin REQUIRED
     cmake_modules
     roscpp
 
+    diagnostic_updater
     geometry_msgs
     pcl_ros
     sensor_msgs
-    tf
-    tf_conversions
+    tf2_ros
+    tf2_sensor_msgs
 
     neonavigation_common
 )
 find_package(PCL REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(xmlrpcpp REQUIRED)
 
 ## Declare a catkin package
 catkin_package(
-  DEPENDS
+  CATKIN_DEPENDS
     roscpp
 
+    diagnostic_updater
     geometry_msgs
     pcl_ros
     sensor_msgs
-    tf
-    tf_conversions
+    tf2_ros
+    tf2_sensor_msgs
 
     neonavigation_common
 )
 include_directories(${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS})
-link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
 # Workaround for debian stretch build (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=894656)
