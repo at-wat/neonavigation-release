@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef GRID_ASTAR_H
-#define GRID_ASTAR_H
+#ifndef PLANNER_CSPACE_GRID_ASTAR_H
+#define PLANNER_CSPACE_GRID_ASTAR_H
 
 #include <memory>
 #define _USE_MATH_DEFINES
@@ -41,9 +41,9 @@
 
 #include <boost/chrono.hpp>
 
-#include <reservable_priority_queue.h>
-#include <cyclic_vec.h>
-#include <blockmem_gridmap.h>
+#include <planner_cspace/reservable_priority_queue.h>
+#include <planner_cspace/cyclic_vec.h>
+#include <planner_cspace/blockmem_gridmap.h>
 
 #include <omp.h>
 
@@ -71,16 +71,16 @@ public:
     {
       p_ = 0;
     }
-    PriorityVec(const float &p, const float &p_raw, const Vec &v)
+    PriorityVec(const float& p, const float& p_raw, const Vec& v)
     {
-      this->p_ = p;
-      this->p_raw_ = p_raw;
-      this->v_ = v;
+      p_ = p;
+      p_raw_ = p_raw;
+      v_ = v;
     }
-    bool operator<(const PriorityVec &b) const
+    bool operator<(const PriorityVec& b) const
     {
       // smaller first
-      return this->p_ > b.p_;
+      return p_ > b.p_;
     }
   };
 
@@ -92,15 +92,15 @@ protected:
   size_t search_task_num_;
 
 public:
-  const int getDim()
+  constexpr int getDim() const
   {
     return DIM;
   }
-  const int getNoncyclic()
+  constexpr int getNoncyclic() const
   {
     return NONCYCLIC;
   }
-  void setSearchTaskNum(const size_t &search_task_num)
+  void setSearchTaskNum(const size_t& search_task_num)
   {
     search_task_num_ = search_task_num;
   }
@@ -128,12 +128,12 @@ public:
   }
 
   bool search(
-      const Vec &s, const Vec &e,
-      std::list<Vec> &path,
-      std::function<float(const Vec &, Vec &, const Vec &, const Vec &)> cb_cost,
-      std::function<float(const Vec &, const Vec &)> cb_cost_estim,
-      std::function<std::vector<Vec> &(const Vec &, const Vec &, const Vec &)> cb_search,
-      std::function<bool(const std::list<Vec> &)> cb_progress,
+      const Vec& s, const Vec& e,
+      std::list<Vec>& path,
+      std::function<float(const Vec&, Vec&, const Vec&, const Vec&)> cb_cost,
+      std::function<float(const Vec&, const Vec&)> cb_cost_estim,
+      std::function<std::vector<Vec>&(const Vec&, const Vec&, const Vec&)> cb_search,
+      std::function<bool(const std::list<Vec>&)> cb_progress,
       const float cost_leave,
       const float progress_interval,
       const bool return_best = false)
@@ -143,13 +143,13 @@ public:
                       cost_leave, progress_interval, return_best);
   }
   bool searchImpl(
-      Gridmap<float> &g,
-      const Vec &st, const Vec &en,
-      std::list<Vec> &path,
-      std::function<float(const Vec &, Vec &, const Vec &, const Vec &)> cb_cost,
-      std::function<float(const Vec &, const Vec &)> cb_cost_estim,
-      std::function<std::vector<Vec> &(const Vec &, const Vec &, const Vec &)> cb_search,
-      std::function<bool(const std::list<Vec> &)> cb_progress,
+      Gridmap<float>& g,
+      const Vec& st, const Vec& en,
+      std::list<Vec>& path,
+      std::function<float(const Vec&, Vec&, const Vec&, const Vec&)> cb_cost,
+      std::function<float(const Vec&, const Vec&)> cb_cost_estim,
+      std::function<std::vector<Vec>&(const Vec&, const Vec&, const Vec&)> cb_search,
+      std::function<bool(const std::list<Vec>&)> cb_progress,
       const float cost_leave,
       const float progress_interval,
       const bool return_best = false)
@@ -222,7 +222,7 @@ public:
         const Vec p = it->v_;
         const float c = it->p_raw_;
         const float c_estim = it->p_;
-        float &gp = g[p];
+        float& gp = g[p];
         if (c > gp)
           continue;
 
@@ -258,7 +258,7 @@ public:
             if (cost < 0 || cost == FLT_MAX)
               break;
 
-            float &gnext = g[next];
+            float& gnext = g[next];
             if (gnext > c + cost)
             {
               gnext = c + cost;
@@ -286,7 +286,7 @@ public:
 
     return findPath(s, e, path);
   }
-  bool findPath(const Vec &s, const Vec &e, std::list<Vec> &path)
+  bool findPath(const Vec& s, const Vec& e, std::list<Vec>& path)
   {
     Vec n = e;
     while (true)
@@ -307,4 +307,4 @@ public:
   }
 };
 
-#endif  // GRID_ASTAR_H
+#endif  // PLANNER_CSPACE_GRID_ASTAR_H
