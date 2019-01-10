@@ -10,8 +10,8 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the copyright holder nor the names of its 
- *       contributors may be used to endorse or promote products derived from 
+ *     * Neither the name of the copyright holder nor the names of its
+ *       contributors may be used to endorse or promote products derived from
  *       this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
@@ -28,8 +28,8 @@
  */
 
 /*
-   * This research was supported by a contract with the Ministry of Internal 
-   Affairs and Communications entitled, 'Novel and innovative R&D making use 
+   * This research was supported by a contract with the Ministry of Internal
+   Affairs and Communications entitled, 'Novel and innovative R&D making use
    of brain structures'
 
    This software was implemented to accomplish the above research.
@@ -41,15 +41,14 @@
 #include <string>
 
 #include <geometry_msgs/Twist.h>
+#include <interactive_markers/interactive_marker_server.h>
 #include <nav_msgs/Path.h>
-#include <visualization_msgs/InteractiveMarkerUpdate.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_datatypes.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <trajectory_tracker_msgs/ChangePath.h>
 #include <trajectory_tracker_msgs/TrajectoryServerStatus.h>
-#include <interactive_markers/interactive_marker_server.h>
+#include <visualization_msgs/InteractiveMarkerUpdate.h>
 
-#include <filter.h>
+#include <trajectory_tracker/filter.h>
 
 #include <neonavigation_common/compatibility.h>
 
@@ -65,7 +64,6 @@ private:
   ros::NodeHandle pnh_;
   ros::Publisher pub_path_;
   ros::Publisher pub_status_;
-  tf::TransformListener tfl_;
   ros::ServiceServer srv_change_path_;
   interactive_markers::InteractiveMarkerServer srv_im_fb_;
 
@@ -76,14 +74,14 @@ private:
   boost::shared_array<uint8_t> buffer_;
   int serial_size_;
   double filter_step_;
-  Filter *lpf_[2];
+  trajectory_tracker::Filter* lpf_[2];
 
   bool loadFile();
   void loadPath();
-  bool change(trajectory_tracker_msgs::ChangePath::Request &req,
-              trajectory_tracker_msgs::ChangePath::Response &res);
+  bool change(trajectory_tracker_msgs::ChangePath::Request& req,
+              trajectory_tracker_msgs::ChangePath::Response& res);
   void processFeedback(
-      const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
+      const visualization_msgs::InteractiveMarkerFeedbackConstPtr& feedback);
   void updateIM();
   enum
   {
@@ -129,7 +127,7 @@ bool ServerNode::loadFile()
     serial_size_ = ifs.tellg();
     ifs.seekg(0, ifs.beg);
     buffer_.reset(new uint8_t[serial_size_]);
-    ifs.read(reinterpret_cast<char *>(buffer_.get()), serial_size_);
+    ifs.read(reinterpret_cast<char*>(buffer_.get()), serial_size_);
 
     return true;
   }
@@ -137,7 +135,7 @@ bool ServerNode::loadFile()
 }
 
 void ServerNode::processFeedback(
-    const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback)
+    const visualization_msgs::InteractiveMarkerFeedbackConstPtr& feedback)
 {
   int id = std::atoi(feedback->marker_name.c_str());
   switch (feedback->event_type)
@@ -173,7 +171,7 @@ void ServerNode::updateIM()
   viz.server_id = "Path";
   srv_im_fb_.clear();
   int i = 0;
-  for (auto &p : path_.poses)
+  for (auto& p : path_.poses)
   {
     visualization_msgs::InteractiveMarker mark;
     visualization_msgs::Marker marker;
@@ -197,7 +195,7 @@ void ServerNode::updateIM()
     marker.type = marker.ARROW;
 
     ss << " ctl";
-    ctl.orientation = tf::createQuaternionMsgFromRollPitchYaw(0.0, M_PI / 2.0, 0.0);
+    ctl.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 1.0, 0.0), M_PI / 2.0));
     ctl.interaction_mode = ctl.MOVE_ROTATE;
     ctl.orientation_mode = ctl.INHERIT;
     ctl.always_visible = true;
@@ -233,8 +231,8 @@ void ServerNode::updateIM()
   srv_im_fb_.applyChanges();
 }
 
-bool ServerNode::change(trajectory_tracker_msgs::ChangePath::Request &req,
-                        trajectory_tracker_msgs::ChangePath::Response &res)
+bool ServerNode::change(trajectory_tracker_msgs::ChangePath::Request& req,
+                        trajectory_tracker_msgs::ChangePath::Response& res)
 {
   req_path_ = req;
   res.success = false;
@@ -248,8 +246,10 @@ bool ServerNode::change(trajectory_tracker_msgs::ChangePath::Request &req,
     if (filter_step_ > 0)
     {
       std::cout << filter_step_ << std::endl;
-      lpf_[0] = new Filter(Filter::FILTER_LPF, filter_step_, path_.poses[0].pose.position.x);
-      lpf_[1] = new Filter(Filter::FILTER_LPF, filter_step_, path_.poses[0].pose.position.y);
+      lpf_[0] = new trajectory_tracker::Filter(
+          trajectory_tracker::Filter::FILTER_LPF, filter_step_, path_.poses[0].pose.position.x);
+      lpf_[1] = new trajectory_tracker::Filter(
+          trajectory_tracker::Filter::FILTER_LPF, filter_step_, path_.poses[0].pose.position.y);
 
       for (size_t i = 0; i < path_.poses.size(); i++)
       {
@@ -290,7 +290,7 @@ void ServerNode::spin()
   }
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "trajectory_server");
 
