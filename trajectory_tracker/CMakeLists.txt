@@ -9,29 +9,33 @@ find_package(catkin REQUIRED
     geometry_msgs
     interactive_markers
     nav_msgs
-    tf
+    tf2
     tf2_geometry_msgs
+    tf2_ros
 
     neonavigation_common
     trajectory_tracker_msgs
 )
 
+find_package(Eigen3 REQUIRED)
+
 ## Declare a catkin package
 catkin_package(
-  DEPENDS
+  CATKIN_DEPENDS
     roscpp
 
     geometry_msgs
     interactive_markers
     nav_msgs
-    tf
+    tf2
     tf2_geometry_msgs
+    tf2_ros
 
     neonavigation_common
     trajectory_tracker_msgs
 )
 
-## Build 
+## Build
 include_directories(${catkin_INCLUDE_DIRS} include)
 
 include(CheckCXXCompilerFlag)
@@ -57,22 +61,25 @@ add_executable(trajectory_saver src/trajectory_saver.cpp)
 target_link_libraries(trajectory_saver ${catkin_LIBRARIES})
 add_dependencies(trajectory_saver ${catkin_EXPORTED_TARGETS})
 
-add_executable(trajectory_server src/trajectory_server.cpp src/filter.cpp)
+add_executable(trajectory_server src/trajectory_server.cpp)
 target_link_libraries(trajectory_server ${catkin_LIBRARIES})
 add_dependencies(trajectory_server ${catkin_EXPORTED_TARGETS})
 
 if(CATKIN_ENABLE_TESTING)
   find_package(rostest REQUIRED)
+  find_package(rosunit REQUIRED)
+  add_subdirectory(test)
+
   find_package(roslint REQUIRED)
   roslint_cpp()
   roslint_add_test()
 endif()
 
 install(TARGETS
-    trajectory_tracker
     trajectory_recorder
     trajectory_saver
     trajectory_server
+    trajectory_tracker
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

@@ -10,8 +10,8 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the copyright holder nor the names of its 
- *       contributors may be used to endorse or promote products derived from 
+ *     * Neither the name of the copyright holder nor the names of its
+ *       contributors may be used to endorse or promote products derived from
  *       this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
@@ -28,8 +28,8 @@
  */
 
 /*
-   * This research was supported by a contract with the Ministry of Internal 
-   Affairs and Communications entitled, 'Novel and innovative R&D making use 
+   * This research was supported by a contract with the Ministry of Internal
+   Affairs and Communications entitled, 'Novel and innovative R&D making use
    of brain structures'
 
    This software was implemented to accomplish the above research.
@@ -39,8 +39,8 @@
 
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Path.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_datatypes.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <math.h>
 #include <string>
@@ -65,7 +65,8 @@ private:
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
   ros::Publisher pub_path_;
-  tf::TransformListener tfl_;
+  tf2_ros::Buffer tfbuf_;
+  tf2_ros::TransformListener tfl_;
 
   nav_msgs::Path path_;
 };
@@ -73,6 +74,7 @@ private:
 RecorderNode::RecorderNode()
   : nh_()
   , pnh_("~")
+  , tfl_(tfbuf_)
 {
   neonavigation_common::compat::checkCompatMode();
   pnh_.param("frame_robot", frame_robot_, std::string("base_link"));
@@ -90,7 +92,7 @@ RecorderNode::~RecorderNode()
 {
 }
 
-float dist2d(geometry_msgs::Point &a, geometry_msgs::Point &b)
+float dist2d(geometry_msgs::Point& a, geometry_msgs::Point& b)
 {
   return sqrtf(powf(a.x - b.x, 2) + powf(a.y - b.y, 2));
 }
@@ -106,22 +108,22 @@ void RecorderNode::spin()
     ros::Time now = ros::Time(0);
     if (store_time_)
       now = ros::Time::now();
-    tf::StampedTransform transform;
+    tf2::Stamped<tf2::Transform> transform;
     try
     {
-      tfl_.waitForTransform(frame_global_, frame_robot_, now, ros::Duration(0.2));
-      tfl_.lookupTransform(frame_global_, frame_robot_, now, transform);
+      tf2::fromMsg(
+          tfbuf_.lookupTransform(frame_global_, frame_robot_, now, ros::Duration(0.2)), transform);
     }
-    catch (tf::TransformException &e)
+    catch (tf2::TransformException& e)
     {
       ROS_WARN("TF exception: %s", e.what());
       continue;
     }
     geometry_msgs::PoseStamped pose;
-    tf::Quaternion q;
+    tf2::Quaternion q;
     transform.getBasis().getRotation(q);
-    tf::quaternionTFToMsg(q, pose.pose.orientation);
-    tf::Vector3 origin = transform.getOrigin();
+    pose.pose.orientation = tf2::toMsg(q);
+    tf2::Vector3 origin = transform.getOrigin();
     pose.pose.position.x = origin.x();
     pose.pose.position.y = origin.y();
     pose.pose.position.z = origin.z();
@@ -148,7 +150,7 @@ void RecorderNode::spin()
   }
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "trajectory_recorder");
 
