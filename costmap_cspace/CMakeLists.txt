@@ -4,26 +4,31 @@ project(costmap_cspace)
 find_package(catkin REQUIRED
   COMPONENTS
     roscpp
-    
+
     geometry_msgs
     laser_geometry
+    nav_msgs
     sensor_msgs
-    tf
+    tf2_geometry_msgs
+    tf2_ros
     tf2_sensor_msgs
 
     costmap_cspace_msgs
     neonavigation_common
 )
+find_package(xmlrpcpp REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
   CATKIN_DEPENDS
     roscpp
-    
+
     geometry_msgs
     laser_geometry
+    nav_msgs
     sensor_msgs
-    tf
+    tf2_geometry_msgs
+    tf2_ros
     tf2_sensor_msgs
 
     costmap_cspace_msgs
@@ -73,9 +78,9 @@ endif()
 
 install(TARGETS
     costmap_3d
+    largemap_to_map
     laserscan_to_map
     pointcloud2_to_map
-    largemap_to_map
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
