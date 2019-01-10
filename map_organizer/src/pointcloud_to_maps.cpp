@@ -33,9 +33,6 @@
 #include <map_organizer_msgs/OccupancyGridArray.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/transforms.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_datatypes.h>
-#include <tf_conversions/tf_eigen.h>
 
 #include <pcl/point_types.h>
 #include <pcl/conversions.h>
@@ -63,7 +60,7 @@
 
 #include <neonavigation_common/compatibility.h>
 
-pcl::PointXYZ operator-(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
+pcl::PointXYZ operator-(const pcl::PointXYZ& a, const pcl::PointXYZ& b)
 {
   auto c = a;
   c.x -= b.x;
@@ -71,7 +68,7 @@ pcl::PointXYZ operator-(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
   c.z -= b.z;
   return c;
 }
-pcl::PointXYZ operator+(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
+pcl::PointXYZ operator+(const pcl::PointXYZ& a, const pcl::PointXYZ& b)
 {
   auto c = a;
   c.x += b.x;
@@ -79,7 +76,7 @@ pcl::PointXYZ operator+(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
   c.z += b.z;
   return c;
 }
-pcl::PointXYZ operator*(const pcl::PointXYZ &a, const float &b)
+pcl::PointXYZ operator*(const pcl::PointXYZ& a, const float& b)
 {
   auto c = a;
   c.x *= b;
@@ -108,7 +105,7 @@ public:
         pnh_, "map_cloud", 1, &PointcloudToMapsNode::cbPoints, this);
     pub_map_array_ = nh_.advertise<map_organizer_msgs::OccupancyGridArray>("maps", 1, true);
   }
-  void cbPoints(const sensor_msgs::PointCloud2::Ptr &msg)
+  void cbPoints(const sensor_msgs::PointCloud2::Ptr& msg)
   {
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *pc);
@@ -141,7 +138,7 @@ public:
     int y_min = INT_MAX, y_max = 0;
     int h_min = INT_MAX, h_max = 0;
 
-    for (auto &p : pc->points)
+    for (auto& p : pc->points)
     {
       int h = (p.z / grid);
       int x = (p.x / grid);
@@ -193,7 +190,7 @@ public:
     {
       if (hist[i] > min_points)
       {
-        for (auto &p : pc->points)
+        for (auto& p : pc->points)
         {
           int x = (p.x / grid);
           int y = (p.y / grid);
@@ -214,7 +211,7 @@ public:
         }
 
         int cnt = 0;
-        for (auto &m : floor[i])
+        for (auto& m : floor[i])
         {
           if (m.second == 0)
             cnt++;
@@ -246,9 +243,9 @@ public:
           map.info.origin.position.z = i * grid;
           map.header = msg->header;
           map.data.resize(mmd.width * mmd.height);
-          for (auto &c : map.data)
+          for (auto& c : map.data)
             c = -1;
-          for (auto &m : floor[i])
+          for (auto& m : floor[i])
           {
             int addr = (m.first.first - x_min) + (m.first.second - y_min) * mmd.width;
             if (m.second == 0)
@@ -346,7 +343,7 @@ public:
     int num = -1;
     int floor_num = 0;
     map_organizer_msgs::OccupancyGridArray map_array;
-    for (auto &map : maps)
+    for (auto& map : maps)
     {
       num++;
       int h = map.info.origin.position.z / grid;
@@ -368,7 +365,7 @@ public:
   }
 };
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "pointcloud_to_maps");
 
