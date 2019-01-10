@@ -28,15 +28,18 @@
  */
 
 #include <ros/ros.h>
+#include <diagnostic_updater/diagnostic_updater.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/PointCloud.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Empty.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl_ros/transforms.h>
-#include <tf/transform_listener.h>
-#include <tf/transform_datatypes.h>
-#include <tf_conversions/tf_eigen.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+
+#include <Eigen/Core>
+#include <Eigen/Geometry>
 
 #include <pcl/point_types.h>
 #include <pcl/conversions.h>
@@ -54,7 +57,7 @@
 
 #include <neonavigation_common/compatibility.h>
 
-pcl::PointXYZ operator-(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
+pcl::PointXYZ operator-(const pcl::PointXYZ& a, const pcl::PointXYZ& b)
 {
   auto c = a;
   c.x -= b.x;
@@ -62,7 +65,7 @@ pcl::PointXYZ operator-(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
   c.z -= b.z;
   return c;
 }
-pcl::PointXYZ operator+(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
+pcl::PointXYZ operator+(const pcl::PointXYZ& a, const pcl::PointXYZ& b)
 {
   auto c = a;
   c.x += b.x;
@@ -70,7 +73,7 @@ pcl::PointXYZ operator+(const pcl::PointXYZ &a, const pcl::PointXYZ &b)
   c.z += b.z;
   return c;
 }
-pcl::PointXYZ operator*(const pcl::PointXYZ &a, const float &b)
+pcl::PointXYZ operator*(const pcl::PointXYZ& a, const float& b)
 {
   auto c = a;
   c.x *= b;
@@ -78,7 +81,7 @@ pcl::PointXYZ operator*(const pcl::PointXYZ &a, const float &b)
   c.z *= b;
   return c;
 }
-bool XmlRpc_isNumber(XmlRpc::XmlRpcValue &value)
+bool XmlRpc_isNumber(XmlRpc::XmlRpcValue& value)
 {
   return value.getType() == XmlRpc::XmlRpcValue::TypeInt ||
          value.getType() == XmlRpc::XmlRpcValue::TypeDouble;
@@ -97,7 +100,8 @@ protected:
   ros::Subscriber sub_disable_;
   ros::Subscriber sub_watchdog_;
   ros::Timer watchdog_timer_;
-  tf::TransformListener tfl_;
+  tf2_ros::Buffer tfbuf_;
+  tf2_ros::TransformListener tfl_;
 
   geometry_msgs::Twist twist_;
   ros::Time last_cloud_stamp_;
@@ -110,7 +114,9 @@ protected:
   double tmax_;
   double dt_;
   double d_margin_;
+  double d_escape_;
   double yaw_margin_;
+  double yaw_escape_;
   double r_lim_;
   double z_range_[2];
   float footprint_radius_;
@@ -126,18 +132,23 @@ protected:
   bool watchdog_stop_;
   bool has_cloud_;
   bool has_twist_;
+  bool has_collision_at_now_;
 
   constexpr static float EPSILON = 1e-6;
+
+  diagnostic_updater::Updater diag_updater_;
 
 public:
   SafetyLimiterNode()
     : nh_()
     , pnh_("~")
+    , tfl_(tfbuf_)
     , cloud_(new pcl::PointCloud<pcl::PointXYZ>)
     , last_disable_cmd_(0)
     , watchdog_stop_(false)
     , has_cloud_(false)
     , has_twist_(true)
+    , has_collision_at_now_(false)
   {
     neonavigation_common::compat::checkCompatMode();
     pub_twist_ = neonavigation_common::compat::advertise<geometry_msgs::Twist>(
@@ -185,7 +196,9 @@ public:
     if (pnh_.hasParam("t_margin"))
       ROS_WARN("safety_limiter: t_margin parameter is obsolated. Use d_margin and yaw_margin instead.");
     pnh_.param("d_margin", d_margin_, 0.2);
+    pnh_.param("d_escape", d_escape_, 0.05);
     pnh_.param("yaw_margin", yaw_margin_, 0.2);
+    pnh_.param("yaw_escape", yaw_escape_, 0.05);
     pnh_.param("downsample_grid", downsample_grid_, 0.05);
     pnh_.param("frame_id", frame_id_, std::string("base_link"));
     double hold_d;
@@ -240,6 +253,9 @@ public:
     }
     footprint_p.v.push_back(footprint_p.v.front());
     ROS_INFO("footprint radius: %0.3f", footprint_radius_);
+
+    diag_updater_.setHardwareID("none");
+    diag_updater_.add("Collision", this, &SafetyLimiterNode::diagnoseCollision);
   }
   void spin()
   {
@@ -256,19 +272,19 @@ public:
   }
 
 protected:
-  void cbWatchdogReset(const std_msgs::Empty::ConstPtr &msg)
+  void cbWatchdogReset(const std_msgs::Empty::ConstPtr& msg)
   {
     watchdog_timer_.setPeriod(watchdog_interval_, true);
     watchdog_stop_ = false;
   }
-  void cbWatchdogTimer(const ros::TimerEvent &event)
+  void cbWatchdogTimer(const ros::TimerEvent& event)
   {
     ROS_WARN_THROTTLE(1.0, "safety_limiter: Watchdog timed-out");
     watchdog_stop_ = true;
     geometry_msgs::Twist cmd_vel;
     pub_twist_.publish(cmd_vel);
   }
-  void cbPredictTimer(const ros::TimerEvent &event)
+  void cbPredictTimer(const ros::TimerEvent& event)
   {
     if (!has_twist_)
       return;
@@ -294,8 +310,10 @@ protected:
     if (r_lim_current < 1.0)
       hold_off_ = now + hold_;
     cloud_.reset(new pcl::PointCloud<pcl::PointXYZ>);
+
+    diag_updater_.force_update();
   }
-  double predict(const geometry_msgs::Twist &in) const
+  double predict(const geometry_msgs::Twist& in)
   {
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc(new pcl::PointCloud<pcl::PointXYZ>);
     pcl::VoxelGrid<pcl::PointXYZ> ds;
@@ -303,7 +321,7 @@ protected:
     ds.setLeafSize(downsample_grid_, downsample_grid_, downsample_grid_);
     ds.filter(*pc);
 
-    auto filter_z = [this](pcl::PointXYZ &p)
+    auto filter_z = [this](pcl::PointXYZ& p)
     {
       if (p.z < this->z_range_[0] || this->z_range_[1] < p.z)
         return true;
@@ -344,13 +362,23 @@ protected:
 
     float d_col = 0;
     float yaw_col = 0;
-    bool col = false;
+    bool has_collision = false;
+    float d_escape_remain = 0;
+    float yaw_escape_remain = 0;
+    has_collision_at_now_ = false;
+
     for (float t = 0; t < tmax_; t += dt_)
     {
-      d_col += twist_.linear.x * dt_;
-      yaw_col += twist_.angular.z * dt_;
-      move = move * motion;
-      move_inv = move_inv * motion_inv;
+      if (t != 0)
+      {
+        d_col += twist_.linear.x * dt_;
+        d_escape_remain -= twist_.linear.x * dt_;
+        yaw_col += twist_.angular.z * dt_;
+        yaw_escape_remain -= twist_.angular.z * dt_;
+        move = move * motion;
+        move_inv = move_inv * motion_inv;
+      }
+
       pcl::PointXYZ center;
       center = pcl::transformPoint(center, move_inv);
       geometry_msgs::Point32 p;
@@ -361,13 +389,14 @@ protected:
 
       std::vector<int> indices;
       std::vector<float> dist;
-      int num = kdtree.radiusSearch(center, footprint_radius_, indices, dist);
+      const int num = kdtree.radiusSearch(center, footprint_radius_, indices, dist);
       if (num == 0)
         continue;
 
-      for (auto &i : indices)
+      bool colliding = false;
+      for (auto& i : indices)
       {
-        auto &p = pc->points[i];
+        auto& p = pc->points[i];
         auto point = pcl::transformPoint(p, move);
         vec v(point.x, point.y);
         if (footprint_p.inside(v))
@@ -377,17 +406,37 @@ protected:
           pos.y = p.y;
           pos.z = p.z;
           col_points.points.push_back(pos);
-          col = true;
+          colliding = true;
           break;
         }
       }
-      if (col)
-        break;
+      if (colliding)
+      {
+        if (t == 0)
+        {
+          // The robot is already in collision.
+          // Allow movement under d_escape_ and yaw_escape_
+          d_escape_remain = d_escape_;
+          yaw_escape_remain = yaw_escape_;
+          has_collision_at_now_ = true;
+        }
+        if (d_escape_remain <= 0 || yaw_escape_remain <= 0)
+        {
+          if (has_collision_at_now_)
+          {
+            // It's not possible to escape from collision; stop completely.
+            d_col = yaw_col = 0;
+          }
+
+          has_collision = true;
+          break;
+        }
+      }
     }
     pub_debug_.publish(debug_points);
     pub_cloud_.publish(col_points);
 
-    if (!col)
+    if (!has_collision)
       return 1.0;
 
     d_col = std::max<float>(std::abs(d_col) - d_margin_, 0.0);
@@ -407,7 +456,7 @@ protected:
     return r;
   }
 
-  geometry_msgs::Twist limit(const geometry_msgs::Twist &in)
+  geometry_msgs::Twist limit(const geometry_msgs::Twist& in)
   {
     auto out = in;
     if (r_lim_ < 1.0 - EPSILON)
@@ -439,38 +488,38 @@ protected:
     {
       c[0] = c[1] = 0.0;
     }
-    float &operator[](const int &i)
+    float& operator[](const int& i)
     {
       return c[i];
     }
-    const float &operator[](const int &i) const
+    const float& operator[](const int& i) const
     {
       return c[i];
     }
-    vec operator-(const vec &a) const
+    vec operator-(const vec& a) const
     {
       vec out = *this;
       out[0] -= a[0];
       out[1] -= a[1];
       return out;
     }
-    float cross(const vec &a) const
+    float cross(const vec& a) const
     {
       return (*this)[0] * a[1] - (*this)[1] * a[0];
     }
-    float dot(const vec &a) const
+    float dot(const vec& a) const
     {
       return (*this)[0] * a[0] + (*this)[1] * a[1];
     }
-    float dist(const vec &a) const
+    float dist(const vec& a) const
     {
       return hypotf((*this)[0] - a[0], (*this)[1] - a[1]);
     }
-    float dist_line(const vec &a, const vec &b) const
+    float dist_line(const vec& a, const vec& b) const
     {
       return (b - a).cross((*this) - a) / b.dist(a);
     }
-    float dist_linestrip(const vec &a, const vec &b) const
+    float dist_linestrip(const vec& a, const vec& b) const
     {
       if ((b - a).dot((*this) - a) <= 0)
         return this->dist(a);
@@ -483,24 +532,24 @@ protected:
   {
   public:
     std::vector<vec> v;
-    void move(const float &x, const float &y, const float &yaw)
+    void move(const float& x, const float& y, const float& yaw)
     {
       const float cos_v = cosf(yaw);
       const float sin_v = sinf(yaw);
-      for (auto &p : v)
+      for (auto& p : v)
       {
         const auto tmp = p;
         p[0] = cos_v * tmp[0] - sin_v * tmp[1] + x;
         p[1] = sin_v * tmp[0] + cos_v * tmp[1] + y;
       }
     }
-    bool inside(const vec &a) const
+    bool inside(const vec& a) const
     {
       int cn = 0;
       for (size_t i = 0; i < v.size() - 1; i++)
       {
-        auto &v1 = v[i];
-        auto &v2 = v[i + 1];
+        auto& v1 = v[i];
+        auto& v2 = v[i + 1];
         if ((v1[1] <= a[1] && a[1] < v2[1]) ||
             (v2[1] <= a[1] && a[1] < v1[1]))
         {
@@ -512,13 +561,13 @@ protected:
       }
       return ((cn & 1) == 1);
     }
-    float dist(const vec &a) const
+    float dist(const vec& a) const
     {
       float dist = FLT_MAX;
       for (size_t i = 0; i < v.size() - 1; i++)
       {
-        auto &v1 = v[i];
-        auto &v2 = v[i + 1];
+        auto& v1 = v[i];
+        auto& v2 = v[i + 1];
         auto d = a.dist_linestrip(v1, v2);
         if (d < dist)
           dist = d;
@@ -529,7 +578,7 @@ protected:
 
   polygon footprint_p;
 
-  void cbTwist(const geometry_msgs::Twist::ConstPtr &msg)
+  void cbTwist(const geometry_msgs::Twist::ConstPtr& msg)
   {
     ros::Time now = ros::Time::now();
 
@@ -554,18 +603,19 @@ protected:
         r_lim_ = 1.0;
     }
   }
-  void cbCloud(const sensor_msgs::PointCloud2::ConstPtr &msg)
+  void cbCloud(const sensor_msgs::PointCloud2::ConstPtr& msg)
   {
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::fromROSMsg(*msg, *pc);
 
     try
     {
-      tfl_.waitForTransform(frame_id_, msg->header.frame_id, msg->header.stamp,
-                            ros::Duration(0.1));
-      pcl_ros::transformPointCloud(frame_id_, *pc, *pc, tfl_);
+      sensor_msgs::PointCloud2 pc2_tmp;
+      geometry_msgs::TransformStamped trans = tfbuf_.lookupTransform(
+          frame_id_, msg->header.frame_id, msg->header.stamp, ros::Duration(0.1));
+      tf2::doTransform(*msg, pc2_tmp, trans);
+      pcl::fromROSMsg(pc2_tmp, *pc);
     }
-    catch (tf::TransformException &e)
+    catch (tf2::TransformException& e)
     {
       ROS_WARN_THROTTLE(1.0, "safety_limiter: Transform failed: %s", e.what());
       return;
@@ -575,16 +625,39 @@ protected:
     last_cloud_stamp_ = msg->header.stamp;
     has_cloud_ = true;
   }
-  void cbDisable(const std_msgs::Bool::ConstPtr &msg)
+  void cbDisable(const std_msgs::Bool::ConstPtr& msg)
   {
     if (msg->data)
     {
       last_disable_cmd_ = ros::Time::now();
     }
   }
+
+  void diagnoseCollision(diagnostic_updater::DiagnosticStatusWrapper& stat)
+  {
+    if (r_lim_ == 1.0)
+    {
+      stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "OK");
+    }
+    else if (r_lim_ == 0.0)
+    {
+      stat.summary(diagnostic_msgs::DiagnosticStatus::WARN,
+                   (has_collision_at_now_) ?
+                       "Cannot escape from collision." :
+                       "Trying to avoid collision, but cannot move anymore.");
+    }
+    else
+    {
+      stat.summary(diagnostic_msgs::DiagnosticStatus::OK,
+                   (has_collision_at_now_) ?
+                       "Escaping from collision." :
+                       "Reducing velocity to avoid collision.");
+    }
+    stat.addf("Velocity Limit Ratio", "%.2f", r_lim_);
+  }
 };
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "safety_limiter");
 
