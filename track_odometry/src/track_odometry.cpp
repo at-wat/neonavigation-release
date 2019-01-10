@@ -33,8 +33,9 @@
 #include <sensor_msgs/Imu.h>
 #include <std_msgs/Float32.h>
 
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
 
 #include <limits>
 #include <string>
@@ -46,19 +47,19 @@
 
 #include <neonavigation_common/compatibility.h>
 
-Eigen::Vector3f toEigen(const geometry_msgs::Vector3 &a)
+Eigen::Vector3f toEigen(const geometry_msgs::Vector3& a)
 {
   return Eigen::Vector3f(a.x, a.y, a.z);
 }
-Eigen::Vector3f toEigen(const geometry_msgs::Point &a)
+Eigen::Vector3f toEigen(const geometry_msgs::Point& a)
 {
   return Eigen::Vector3f(a.x, a.y, a.z);
 }
-Eigen::Quaternionf toEigen(const geometry_msgs::Quaternion &a)
+Eigen::Quaternionf toEigen(const geometry_msgs::Quaternion& a)
 {
   return Eigen::Quaternionf(a.w, a.x, a.y, a.z);
 }
-geometry_msgs::Point toPoint(const Eigen::Vector3f &a)
+geometry_msgs::Point toPoint(const Eigen::Vector3f& a)
 {
   geometry_msgs::Point b;
   b.x = a.x();
@@ -66,7 +67,7 @@ geometry_msgs::Point toPoint(const Eigen::Vector3f &a)
   b.z = a.z();
   return b;
 }
-geometry_msgs::Vector3 toVector3(const Eigen::Vector3f &a)
+geometry_msgs::Vector3 toVector3(const Eigen::Vector3f& a)
 {
   geometry_msgs::Vector3 b;
   b.x = a.x();
@@ -84,8 +85,9 @@ private:
   ros::Subscriber sub_imu_;
   ros::Subscriber sub_reset_z_;
   ros::Publisher pub_odom_;
-  tf::TransformBroadcaster tf_broadcaster_;
-  tf::TransformListener tf_listener_;
+  tf2_ros::Buffer tf_buffer_;
+  tf2_ros::TransformListener tf_listener_;
+  tf2_ros::TransformBroadcaster tf_broadcaster_;
   nav_msgs::Odometry odom_prev_;
   nav_msgs::Odometry odomraw_prev_;
 
@@ -113,11 +115,11 @@ private:
   bool has_odom_;
   bool publish_tf_;
 
-  void cbResetZ(const std_msgs::Float32::Ptr &msg)
+  void cbResetZ(const std_msgs::Float32::Ptr& msg)
   {
     odom_prev_.pose.pose.position.z = msg->data;
   }
-  void cbImu(const sensor_msgs::Imu::Ptr &msg)
+  void cbImu(const sensor_msgs::Imu::Ptr& msg)
   {
     if (base_link_id_.size() == 0)
     {
@@ -128,57 +130,58 @@ private:
     imu_.header = msg->header;
     try
     {
-      tf_listener_.waitForTransform(base_link_id_, msg->header.frame_id,
-                                    ros::Time(0), ros::Duration(0.1));
+      geometry_msgs::TransformStamped trans = tf_buffer_.lookupTransform(
+          base_link_id_, msg->header.frame_id, ros::Time(0), ros::Duration(0.1));
 
       geometry_msgs::Vector3Stamped vin, vout;
       vin.header = imu_.header;
       vin.header.stamp = ros::Time(0);
       vin.vector = msg->linear_acceleration;
-      tf_listener_.transformVector(base_link_id_, vin, vout);
+      tf2::doTransform(vin, vout, trans);
       imu_.linear_acceleration = vout.vector;
 
       vin.header = imu_.header;
       vin.header.stamp = ros::Time(0);
       vin.vector = msg->angular_velocity;
-      tf_listener_.transformVector(base_link_id_, vin, vout);
+      tf2::doTransform(vin, vout, trans);
       imu_.angular_velocity = vout.vector;
 
-      tf::Stamped<tf::Quaternion> qin, qout;
+      tf2::Stamped<tf2::Quaternion> qin, qout;
       geometry_msgs::QuaternionStamped qmin, qmout;
       qmin.header = imu_.header;
       qmin.quaternion = msg->orientation;
-      tf::quaternionStampedMsgToTF(qmin, qin);
+      tf2::fromMsg(qmin, qin);
 
       auto axis = qin.getAxis();
       auto angle = qin.getAngle();
-      tf::Stamped<tf::Vector3> axis2;
-      tf::Stamped<tf::Vector3> axis1;
-      axis1.setData(axis);
-      axis1.stamp_ = ros::Time(0);
-      axis1.frame_id_ = qin.frame_id_;
-      tf_listener_.transformVector(base_link_id_, axis1, axis2);
+      geometry_msgs::Vector3Stamped axis2;
+      geometry_msgs::Vector3Stamped axis1;
+      axis1.vector = tf2::toMsg(axis);
+      axis1.header.stamp = ros::Time(0);
+      axis1.header.frame_id = qin.frame_id_;
+      tf2::doTransform(axis1, axis2, trans);
 
-      qout.setData(tf::Quaternion(axis2, angle));
+      tf2::fromMsg(axis2.vector, axis);
+      qout.setData(tf2::Quaternion(axis, angle));
       qout.stamp_ = qin.stamp_;
       qout.frame_id_ = base_link_id_;
 
-      tf::quaternionStampedTFToMsg(qout, qmout);
+      qmout = tf2::toMsg(qout);
       imu_.orientation = qmout.quaternion;
       // ROS_INFO("%0.3f %s -> %0.3f %s",
-      //   tf::getYaw(qmin.quaternion), qmin.header.frame_id.c_str(),
-      //   tf::getYaw(qmout.quaternion), qmout.header.frame_id.c_str());
+      //   tf2::getYaw(qmin.quaternion), qmin.header.frame_id.c_str(),
+      //   tf2::getYaw(qmout.quaternion), qmout.header.frame_id.c_str());
 
       has_imu_ = true;
     }
-    catch (tf::TransformException &e)
+    catch (tf2::TransformException& e)
     {
       ROS_ERROR("%s", e.what());
       has_imu_ = false;
       return;
     }
   }
-  void cbOdom(const nav_msgs::Odometry::Ptr &msg)
+  void cbOdom(const nav_msgs::Odometry::Ptr& msg)
   {
     nav_msgs::Odometry odom = *msg;
     if (has_odom_)
@@ -267,6 +270,7 @@ public:
   TrackOdometryNode()
     : nh_()
     , pnh_("~")
+    , tf_listener_(tf_buffer_)
   {
     neonavigation_common::compat::checkCompatMode();
     pnh_.param("without_odom", without_odom_, false);
@@ -315,7 +319,7 @@ public:
     dist_ = 0;
     slip_.set(0.0, 0.1);
   }
-  void cbTimer(const ros::TimerEvent &event)
+  void cbTimer(const ros::TimerEvent& event)
   {
     nav_msgs::Odometry::Ptr odom(new nav_msgs::Odometry);
     odom->header.stamp = ros::Time::now();
@@ -339,7 +343,7 @@ public:
   }
 };
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
   ros::init(argc, argv, "track_odometry");
 
