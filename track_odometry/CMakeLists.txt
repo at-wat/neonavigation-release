@@ -10,7 +10,9 @@ find_package(catkin REQUIRED
     nav_msgs
     sensor_msgs
     std_msgs
-    tf
+    tf2
+    tf2_geometry_msgs
+    tf2_ros
     trajectory_msgs
 
     neonavigation_common
@@ -24,7 +26,9 @@ catkin_package(
     nav_msgs
     sensor_msgs
     std_msgs
-    tf
+    tf2
+    tf2_geometry_msgs
+    tf2_ros
     trajectory_msgs
 
     neonavigation_common
@@ -58,9 +62,8 @@ add_dependencies(tf_projection ${catkin_EXPORTED_TARGETS})
 
 if(CATKIN_ENABLE_TESTING)
   find_package(rostest REQUIRED)
-
-  catkin_add_gtest(test_tf_projection test/src/test_tf_projection.cpp)
-  target_link_libraries(test_tf_projection ${catkin_LIBRARIES})
+  find_package(rosunit REQUIRED)
+  add_subdirectory(test)
 
   find_package(roslint REQUIRED)
   roslint_cpp()
@@ -68,8 +71,8 @@ if(CATKIN_ENABLE_TESTING)
 endif()
 
 install(TARGETS
-    track_odometry
     tf_projection
+    track_odometry
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
