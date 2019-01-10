@@ -14,13 +14,15 @@ ROS meta-package for autonomous vehicle navigation.
 
 ## Install
 
-**Note: neonavigation_msgs meta-package is required to build neonavigation meta-package.**
+- **Note 1: neonavigation_msgs meta-package is required to build neonavigation meta-package.**
+- **Note 2: neonavigation_rviz_plugins meta-package is required to visualize PathWithVelocity message used between planner_3d and trajectory_tracker.**
 
 ```shell
 # clone
 cd /path/to/your/catkin_ws/src
 git clone https://github.com/at-wat/neonavigation.git
 git clone https://github.com/at-wat/neonavigation_msgs.git
+git clone https://github.com/at-wat/neonavigation_rviz_plugins.git
 
 # build
 cd /path/to/your/catkin_ws
@@ -76,6 +78,14 @@ Sample launch files.
 
 A. Watanabe, D. Endo, G. Yamauchi and K. Nagatani, "*Neonavigation meta-package: 2-D/3-DOF seamless global-local planner for ROS — Development and field test on the representative offshore oil plant,*" 2016 IEEE International Symposium on Safety, Security, and Rescue Robotics (SSRR), Lausanne, Switzerland, 2016, pp. 86-91.
 (doi: 10.1109/SSRR.2016.7784282)
+
+## Contributing
+
+*neonavigation meta-package* is developed under [GitHub flow](https://guides.github.com/introduction/flow/).
+Feel free to open new Issue and/or Pull Request.
+
+The code in this repository is following [ROS C++ Style Guide](https://wiki.ros.org/CppStyleGuide).
+A configuration file for clang-format is available at https://github.com/seqsense/ros_style/.
 
 ## License
 
