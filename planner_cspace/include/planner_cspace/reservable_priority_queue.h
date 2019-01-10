@@ -27,32 +27,36 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <filter.h>
+#ifndef PLANNER_CSPACE_RESERVABLE_PRIORITY_QUEUE_H
+#define PLANNER_CSPACE_RESERVABLE_PRIORITY_QUEUE_H
 
-double Filter::in(const double i)
-{
-  x_ = k_[0] * i + k_[1] * x_;
-  return k_[2] * i + k_[3] * x_;
-}
+#include <queue>
 
-Filter::Filter(const Type type, const double tc, const double out0)
+template <class T>
+class reservable_priority_queue : public std::priority_queue<T>
 {
-  time_const_ = tc;
-  switch (type)
+public:
+  typedef typename std::priority_queue<T>::size_type size_type;
+  explicit reservable_priority_queue(const size_type capacity = 0)
   {
-    case FILTER_LPF:
-      k_[3] = -1 / (1.0 + 2 * time_const_);
-      k_[2] = -k_[3];
-      k_[1] = (1.0 - 2 * time_const_) * k_[3];
-      k_[0] = -k_[1] - 1.0;
-      x_ = (1 - k_[2]) * out0 / k_[3];
-      break;
-    case FILTER_HPF:
-      k_[3] = -1 / (1.0 + 2 * time_const_);
-      k_[2] = -k_[3] * 2 * time_const_;
-      k_[1] = (1.0 - 2 * time_const_) * k_[3];
-      k_[0] = 2 * time_const_ * (-k_[1] + 1.0);
-      x_ = (1 - k_[2]) * out0 / k_[3];
-      break;
+    reserve(capacity);
   }
-}
+  void reserve(const size_type capacity)
+  {
+    this->c.reserve(capacity);
+  }
+  size_type capacity() const
+  {
+    return this->c.capacity();
+  }
+  void clear()
+  {
+    this->c.clear();
+  }
+  void pop_back()
+  {
+    this->c.pop_back();
+  }
+};
+
+#endif  // PLANNER_CSPACE_RESERVABLE_PRIORITY_QUEUE_H
