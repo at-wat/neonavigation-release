@@ -31,7 +31,7 @@
 
 #include <gtest/gtest.h>
 
-#include <cyclic_vec.h>
+#include <planner_cspace/cyclic_vec.h>
 
 TEST(CyclicVec, InitFloat)
 {
@@ -57,6 +57,20 @@ TEST(CyclicVec, InitFloat)
   for (size_t i = 0; i < 3; ++i)
   {
     ASSERT_EQ(v[i], val2[i]);
+  }
+
+#define VAL3F     \
+  {               \
+    7.0, 8.0, 9.0 \
+  }
+  const float val3[3] = VAL3F;
+  CyclicVecFloat<3, 2> v2(VAL3F);
+  const CyclicVecFloat<3, 2> vc2(VAL3F);
+
+  for (size_t i = 0; i < 3; ++i)
+  {
+    ASSERT_EQ(v2[i], val3[i]);
+    ASSERT_EQ(vc2[i], val3[i]);
   }
 }
 
@@ -84,6 +98,20 @@ TEST(CyclicVec, InitInt)
   for (size_t i = 0; i < 3; ++i)
   {
     ASSERT_EQ(v[i], val2[i]);
+  }
+
+#define VAL3I \
+  {           \
+    7, 8, 9   \
+  }
+  const int val3[3] = VAL3I;
+  CyclicVecInt<3, 2> v2(VAL3I);
+  const CyclicVecInt<3, 2> vc2(VAL3I);
+
+  for (size_t i = 0; i < 3; ++i)
+  {
+    ASSERT_EQ(v2[i], val3[i]);
+    ASSERT_EQ(vc2[i], val3[i]);
   }
 }
 
@@ -211,7 +239,7 @@ TEST(CyclicVec, Cycle)
   ASSERT_EQ(v[2], 3);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);
 
