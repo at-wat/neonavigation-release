@@ -32,7 +32,7 @@
 
 #include <gtest/gtest.h>
 
-#include <blockmem_gridmap.h>
+#include <planner_cspace/blockmem_gridmap.h>
 
 TEST(BlockmemGridmap, ResetClear)
 {
@@ -143,7 +143,7 @@ TEST(BlockmemGridmap, OuterBoundery)
   }
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);
 
