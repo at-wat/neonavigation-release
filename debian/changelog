@@ -1,0 +1,33 @@
+ros-indigo-neonavigation-common (0.3.1-0trusty) trusty; urgency=high
+
+  * Fix pointer alignment style (#233 <https://github.com/at-wat/neonavigation/issues/233>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 10 Jan 2019 00:00:00 -0000
+
+ros-indigo-neonavigation-common (0.2.3-0trusty) trusty; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 19 Jul 2018 00:00:00 -0000
+
+ros-indigo-neonavigation-common (0.2.2-0trusty) trusty; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 17 Jul 2018 00:00:00 -0000
+
+ros-indigo-neonavigation-common (0.2.1-0trusty) trusty; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sat, 14 Jul 2018 00:00:00 -0000
+
+ros-indigo-neonavigation-common (0.2.0-0trusty) trusty; urgency=high
+
+  * Fix topic/service namespace model (#168 <https://github.com/at-wat/neonavigation/issues/168>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 12 Jul 2018 00:00:00 -0000
+
+
