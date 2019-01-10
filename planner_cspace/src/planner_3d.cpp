@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017, the neonavigation authors
+ * Copyright (c) 2014-2018, the neonavigation authors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,42 +27,44 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <algorithm>
+#include <limits>
+#include <list>
+#include <string>
+#include <vector>
+
 #include <ros/ros.h>
-#include <ros/console.h>
+
 #include <costmap_cspace_msgs/CSpace3D.h>
 #include <costmap_cspace_msgs/CSpace3DUpdate.h>
-#include <planner_cspace_msgs/PlannerStatus.h>
-#include <std_srvs/Empty.h>
+#include <diagnostic_updater/diagnostic_updater.h>
 #include <nav_msgs/GetPlan.h>
 #include <nav_msgs/Path.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_listener.h>
+#include <planner_cspace_msgs/PlannerStatus.h>
 #include <sensor_msgs/PointCloud.h>
+#include <std_srvs/Empty.h>
+#include <trajectory_tracker_msgs/PathWithVelocity.h>
+#include <trajectory_tracker_msgs/converter.h>
+
+#include <ros/console.h>
+#include <tf2/utils.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <actionlib/server/simple_action_server.h>
 #include <move_base_msgs/MoveBaseAction.h>
 
-#include <string>
-#include <list>
-#include <vector>
-#include <algorithm>
-
 #include <costmap_cspace/node_handle_float.h>
-#include <grid_astar.h>
-#include <bbf.h>
-
 #include <neonavigation_common/compatibility.h>
 
-#include <omp.h>
+#include <planner_cspace/bbf.h>
+#include <planner_cspace/grid_astar.h>
+#include <planner_cspace/planner_3d/grid_metric_converter.h>
+#include <planner_cspace/planner_3d/jump_detector.h>
+#include <planner_cspace/planner_3d/motion_cache.h>
+#include <planner_cspace/rotation_cache.h>
 
-float signf(float a)
-{
-  if (a < 0)
-    return -1;
-  else if (a > 0)
-    return 1;
-  return 0;
-}
+#include <omp.h>
 
 class Planner3dNode
 {
@@ -78,6 +80,7 @@ protected:
   ros::Subscriber sub_map_update_;
   ros::Subscriber sub_goal_;
   ros::Publisher pub_path_;
+  ros::Publisher pub_path_velocity_;
   ros::Publisher pub_debug_;
   ros::Publisher pub_hist_;
   ros::Publisher pub_start_;
@@ -87,7 +90,8 @@ protected:
   ros::ServiceServer srs_make_plan_;
 
   std::shared_ptr<Planner3DActionServer> act_;
-  tf::TransformListener tfl_;
+  tf2_ros::Buffer tfbuf_;
+  tf2_ros::TransformListener tfl_;
 
   Astar as_;
   Astar::Gridmap<char, 0x40> cm_;
@@ -101,7 +105,7 @@ protected:
 
   Astar::Vecf euclid_cost_coef_;
 
-  float euclidCost(const Astar::Vec &v, const Astar::Vecf coef)
+  float euclidCost(const Astar::Vec& v, const Astar::Vecf coef) const
   {
     Astar::Vec vc = v;
     float cost = 0;
@@ -117,51 +121,13 @@ protected:
     }
     return cost;
   }
-  float euclidCost(const Astar::Vec &v)
+  float euclidCost(const Astar::Vec& v) const
   {
     return euclidCost(v, euclid_cost_coef_);
   }
 
-  class RotationCache
-  {
-  protected:
-    std::unique_ptr<Astar::Vecf[]> c_;
-    Astar::Vec size_;
-    int ser_size_;
-
-  public:
-    void reset(const Astar::Vec &size)
-    {
-      size_t ser_size = 1;
-      for (int i = 0; i < 3; i++)
-      {
-        ser_size *= size[i];
-      }
-      this->size_ = size;
-      this->ser_size_ = ser_size;
-
-      c_.reset(new Astar::Vecf[ser_size]);
-    }
-    explicit RotationCache(const Astar::Vec &size)
-    {
-      reset(size);
-    }
-    RotationCache()
-    {
-    }
-    Astar::Vecf &operator[](const Astar::Vec &pos)
-    {
-      size_t addr = pos[2];
-      for (int i = 1; i >= 0; i--)
-      {
-        addr *= size_[i];
-        addr += pos[i];
-      }
-      return c_[addr];
-    }
-  };
-  std::vector<RotationCache> rotgm_;
-  RotationCache *rot_cache_;
+  std::vector<RotationCache<3, 2>> rotgm_;
+  RotationCache<3, 2>* rot_cache_;
 
   costmap_cspace_msgs::MapMetaData3D map_info_;
   std_msgs::Header map_header_;
@@ -178,6 +144,10 @@ protected:
   int esc_range_;
   int esc_angle_;
   double esc_range_f_;
+  int tolerance_range_;
+  int tolerance_angle_;
+  double tolerance_range_f_;
+  double tolerance_angle_f_;
   int unknown_cost_;
   bool overwrite_cost_;
   bool has_map_;
@@ -195,9 +165,10 @@ protected:
   bool temporary_escape_;
   float remember_hit_odds_;
   float remember_miss_odds_;
+  bool use_path_with_velocity_;
 
-  double pos_jump_;
-  double yaw_jump_;
+  JumpDetector jump_;
+  std::string robot_frame_;
 
   int max_retry_num_;
 
@@ -211,6 +182,7 @@ protected:
     float weight_backward_;
     float weight_ang_vel_;
     float weight_costmap_;
+    float weight_costmap_turn_;
     float weight_remembered_;
     float weight_hysteresis_;
     float in_place_turn_;
@@ -254,156 +226,15 @@ protected:
 
   int cnt_stuck_;
 
-  using MotionInterpCache = std::unordered_map<
-      int,
-      std::unordered_map<
-          Astar::Vec, std::vector<Astar::Vec>, Astar::Vec>>;
-  using DistanceCache = std::unordered_map<
-      int,
-      std::unordered_map<
-          Astar::Vec, float, Astar::Vec>>;
+  MotionCache<Astar::Vec, Astar::Vecf>::Ptr motion_cache_;
+  MotionCache<Astar::Vec, Astar::Vecf>::Ptr motion_cache_linear_;
 
-  MotionInterpCache motion_interp_cache_;
-  DistanceCache distf_cache_;
+  diagnostic_updater::Updater diag_updater_;
+  ros::Duration costmap_watchdog_;
+  ros::Time last_costmap_;
 
-  MotionInterpCache linear_interp_cache_;
-  DistanceCache linear_distf_cache_;
-
-  void initMotionInterpCache(
-      const bool linear,
-      MotionInterpCache &motion_interp_cache,
-      DistanceCache &distf_cache)
-  {
-    const int yaw_limit = (linear) ? 1 : map_info_.angle;
-
-    ROS_DEBUG("initMotionInterpCache: (range: %d, angle: %d)", range_, yaw_limit);
-    motion_interp_cache.clear();
-
-    for (int syaw = 0; syaw < yaw_limit; syaw++)
-    {
-      const float yaw = syaw * map_info_.angular_resolution;
-      Astar::Vec d;
-      for (d[0] = -range_; d[0] <= range_; d[0]++)
-      {
-        for (d[1] = -range_; d[1] <= range_; d[1]++)
-        {
-          if (d[0] == 0 && d[1] == 0)
-            continue;
-          if (d.sqlen() > range_ * range_)
-            continue;
-          for (d[2] = 0; d[2] < static_cast<int>(map_info_.angle); d[2]++)
-          {
-            const float yaw_e = d[2] * map_info_.angular_resolution;
-            const float diff_val[3] =
-                {
-                  d[0] * map_info_.linear_resolution,
-                  d[1] * map_info_.linear_resolution,
-                  d[2] * map_info_.angular_resolution
-                };
-            std::unordered_map<Astar::Vec, bool, Astar::Vec> registered;
-
-            Astar::Vecf motion(diff_val);
-            rotate(motion, -syaw * map_info_.angular_resolution);
-            const float cos_v = cosf(motion[2]);
-            const float sin_v = sinf(motion[2]);
-
-            const float inter = 1.0 / d.len();
-
-            if (fabs(sin_v) < 0.1)
-            {
-              for (float i = 0; i < 1.0; i += inter)
-              {
-                const float x = diff_val[0] * i;
-                const float y = diff_val[1] * i;
-
-                const float pos_raw[3] =
-                    {
-                      roundf(x / map_info_.linear_resolution),
-                      roundf(y / map_info_.linear_resolution),
-                      roundf(yaw / map_info_.angular_resolution)
-                    };
-                Astar::Vec pos(pos_raw);
-                pos.cycleUnsigned(pos[2], map_info_.angle);
-                if (registered.find(pos) == registered.end())
-                {
-                  motion_interp_cache[syaw][d].push_back(pos);
-                  registered[pos] = true;
-                }
-              }
-              distf_cache[syaw][d] = d.len();
-              continue;
-            }
-
-            float distf = 0.0;
-            const float r1 = motion[1] + motion[0] * cos_v / sin_v;
-            float r2 = sqrtf(powf(motion[0], 2.0) + powf(motion[0] * cos_v / sin_v, 2.0));
-            if (motion[0] * sin_v < 0)
-              r2 = -r2;
-
-            float cx, cy, cx_s, cy_s, dyaw;
-            dyaw = yaw_e - yaw;
-            if (dyaw < -M_PI)
-              dyaw += 2 * M_PI;
-            else if (dyaw > M_PI)
-              dyaw -= 2 * M_PI;
-
-            cx = d[0] * map_info_.linear_resolution + r2 * cosf(yaw_e + M_PI / 2);
-            cy = d[1] * map_info_.linear_resolution + r2 * sinf(yaw_e + M_PI / 2);
-            cx_s = r1 * cosf(yaw + M_PI / 2);
-            cy_s = r1 * sinf(yaw + M_PI / 2);
-
-            Astar::Vecf posf_prev;
-
-            for (float i = 0; i < 1.0; i += inter)
-            {
-              const float r = r1 * (1.0 - i) + r2 * i;
-              const float cx2 = cx_s * (1.0 - i) + cx * i;
-              const float cy2 = cy_s * (1.0 - i) + cy * i;
-              const float cyaw = yaw + i * dyaw;
-
-              const float posf_raw[3] =
-                  {
-                    (cx2 - r * cosf(cyaw + M_PI / 2)) / map_info_.linear_resolution,
-                    (cy2 - r * sinf(cyaw + M_PI / 2)) / map_info_.linear_resolution,
-                    cyaw / map_info_.angular_resolution
-                  };
-              Astar::Vecf posf(posf_raw);
-              Astar::Vec pos(posf_raw);
-              pos.cycleUnsigned(pos[2], map_info_.angle);
-              if (registered.find(pos) == registered.end())
-              {
-                motion_interp_cache[syaw][d].push_back(pos);
-                registered[pos] = true;
-              }
-              distf += (posf - posf_prev).len();
-              posf_prev = posf;
-            }
-            distf_cache[syaw][d] = distf;
-          }
-        }
-      }
-      // Sort to improve cache hit rate
-      for (auto &cache : motion_interp_cache[syaw])
-      {
-        auto comp = [this](const Astar::Vec a, const Astar::Vec b)
-        {
-          size_t a_baddr, a_addr;
-          size_t b_baddr, b_addr;
-          cm_.block_addr(a, a_baddr, a_addr);
-          cm_.block_addr(b, b_baddr, b_addr);
-          if (a_baddr == b_baddr)
-          {
-            return (a_addr < b_addr);
-          }
-          return (a_baddr < b_baddr);
-        };
-        std::sort(cache.second.begin(), cache.second.end(), comp);
-      }
-    }
-  }
-
-  bool cbForget(std_srvs::EmptyRequest &req,
-                std_srvs::EmptyResponse &res)
+  bool cbForget(std_srvs::EmptyRequest& req,
+                std_srvs::EmptyResponse& res)
   {
     ROS_WARN("Forgetting remembered costmap.");
     if (has_map_)
@@ -411,18 +242,20 @@ protected:
 
     return true;
   }
-  bool cbMakePlan(nav_msgs::GetPlan::Request &req,
-                  nav_msgs::GetPlan::Response &res)
+  bool cbMakePlan(nav_msgs::GetPlan::Request& req,
+                  nav_msgs::GetPlan::Response& res)
   {
     if (!has_map_)
       return false;
 
     Astar::Vec s, e;
-    metric2Grid(s[0], s[1], s[2],
-                req.start.pose.position.x, req.start.pose.position.y, tf::getYaw(req.start.pose.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, s[0], s[1], s[2],
+        req.start.pose.position.x, req.start.pose.position.y, tf2::getYaw(req.start.pose.orientation));
     s[2] = 0;
-    metric2Grid(e[0], e[1], e[2],
-                req.goal.pose.position.x, req.goal.pose.position.y, tf::getYaw(req.goal.pose.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, e[0], e[1], e[2],
+        req.goal.pose.position.x, req.goal.pose.position.y, tf2::getYaw(req.goal.pose.orientation));
     e[2] = 0;
 
     if (!(cm_rough_.validate(s, range_) && cm_rough_.validate(e, range_)))
@@ -439,54 +272,47 @@ protected:
     const Astar::Vecf euclid_cost_coef = ec_rough_;
 
     const auto cb_cost = [this, &euclid_cost_coef](
-        const Astar::Vec &s, Astar::Vec &e,
-        const Astar::Vec &v_goal, const Astar::Vec &v_start,
+        const Astar::Vec& s, Astar::Vec& e,
+        const Astar::Vec& v_goal, const Astar::Vec& v_start,
         const bool hyst) -> float
     {
       const Astar::Vec d = e - s;
       float cost = euclidCost(d, euclid_cost_coef);
 
       int sum = 0;
-      int num = 0;
-      const auto cache_page = linear_interp_cache_[0].find(d);
-      if (cache_page == linear_interp_cache_[0].end())
+      const auto cache_page = motion_cache_linear_->find(0, d);
+      if (cache_page == motion_cache_linear_->end(0))
         return -1;
-      for (const auto &pos_diff : cache_page->second)
+      const int num = cache_page->second.getMotion().size();
+      for (const auto& pos_diff : cache_page->second.getMotion())
       {
-        const int posi[3] =
-            {
-              s[0] + pos_diff[0], s[1] + pos_diff[1], 0
-            };
-        const Astar::Vec pos(posi);
+        // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+        const Astar::Vec pos({ s[0] + pos_diff[0], s[1] + pos_diff[1], 0 });  // NOLINT(whitespace/braces)
         const auto c = cm_rough_[pos];
         if (c > 99)
           return -1;
         sum += c;
-        num++;
       }
-      const float &distf = linear_distf_cache_[0][d];
+      const float distf = cache_page->second.getDistance();
       cost += sum * map_info_.linear_resolution * distf * cc_.weight_costmap_ / (100.0 * num);
 
       return cost;
     };
     const auto cb_cost_estim = [this, &euclid_cost_coef](
-        const Astar::Vec &s, const Astar::Vec &e)
+        const Astar::Vec& s, const Astar::Vec& e)
     {
       const Astar::Vec d = e - s;
       const float cost = euclidCost(d, euclid_cost_coef);
 
-      if (cost == FLT_MAX)
-        return FLT_MAX;
-
       return cost;
     };
     const auto cb_search = [this](
-        const Astar::Vec &p,
-        const Astar::Vec &s, const Astar::Vec &e) -> std::vector<Astar::Vec> &
+        const Astar::Vec& p,
+        const Astar::Vec& s, const Astar::Vec& e) -> std::vector<Astar::Vec>&
     {
       return search_list_rough_;
     };
-    const auto cb_progress = [](const std::list<Astar::Vec> &path_grid)
+    const auto cb_progress = [](const std::list<Astar::Vec>& path_grid)
     {
       return true;
     };
@@ -521,7 +347,7 @@ protected:
     path.header = map_header_;
     path.header.stamp = ros::Time::now();
 
-    grid2Metric(path_grid, path, s);
+    grid_metric_converter::grid2MetricPath(map_info_, 0.0, path_grid, path, s);
 
     res.plan.header = map_header_;
     res.plan.poses.resize(path.poses.size());
@@ -533,7 +359,7 @@ protected:
     return true;
   }
 
-  void cbGoal(const geometry_msgs::PoseStamped::ConstPtr &msg)
+  void cbGoal(const geometry_msgs::PoseStamped::ConstPtr& msg)
   {
     if (act_->isActive())
     {
@@ -549,11 +375,11 @@ protected:
     has_goal_ = false;
     status_.status = planner_cspace_msgs::PlannerStatus::DONE;
   }
-  bool setGoal(const geometry_msgs::PoseStamped &msg)
+  bool setGoal(const geometry_msgs::PoseStamped& msg)
   {
     goal_raw_ = goal_ = msg;
 
-    double len2 =
+    const double len2 =
         goal_.pose.orientation.x * goal_.pose.orientation.x +
         goal_.pose.orientation.y * goal_.pose.orientation.y +
         goal_.pose.orientation.z * goal_.pose.orientation.z +
@@ -570,6 +396,7 @@ protected:
       }
       status_.status = planner_cspace_msgs::PlannerStatus::DOING;
       pub_status_.publish(status_);
+      diag_updater_.update();
     }
     else
     {
@@ -578,12 +405,13 @@ protected:
     }
     return true;
   }
-  void fillCostmap(reservable_priority_queue<Astar::PriorityVec> &open,
-                   Astar::Gridmap<float> &g,
-                   const Astar::Vec &s, const Astar::Vec &e)
+  void fillCostmap(
+      reservable_priority_queue<Astar::PriorityVec>& open,
+      Astar::Gridmap<float>& g,
+      const Astar::Vec& s, const Astar::Vec& e)
   {
-    Astar::Vec s_rough = s;
-    s_rough[2] = 0;
+    // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+    const Astar::Vec s_rough({ s[0], s[1], 0 });  // NOLINT(whitespace/braces)
 
     while (true)
     {
@@ -595,7 +423,7 @@ protected:
       {
         if (open.size() < 1)
           break;
-        auto center = open.top();
+        const auto center = open.top();
         open.pop();
         if (center.p_raw_ > g[center.v_])
           continue;
@@ -626,41 +454,36 @@ protected:
             if ((unsigned int)next[0] >= (unsigned int)map_info_.width ||
                 (unsigned int)next[1] >= (unsigned int)map_info_.height)
               continue;
-            auto &gnext = g[next];
+            auto& gnext = g[next];
             if (gnext < 0)
               continue;
 
             float cost = 0;
 
             {
-              float v[3], dp[3], sum = 0, sum_hist = 0;
-              float distf = d.len();
-              const int dist = distf;
-              distf /= dist;
-              v[0] = p[0];
-              v[1] = p[1];
-              v[2] = 0;
-              dp[0] = static_cast<float>(d[0]) / dist;
-              dp[1] = static_cast<float>(d[1]) / dist;
-              Astar::Vec pos(v);
-              char c = 0;
-              for (int i = 0; i < dist; i++)
+              float sum = 0, sum_hist = 0;
+              const float grid_to_len = d.gridToLenFactor();
+              const int dist = d.len();
+              const float dpx = static_cast<float>(d[0]) / dist;
+              const float dpy = static_cast<float>(d[1]) / dist;
+              // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+              Astar::Vec pos({ static_cast<int>(p[0]), static_cast<int>(p[1]), 0 });  // NOLINT(whitespace/braces)
+              int i = 0;
+              for (; i < dist; i++)
               {
-                pos[0] = static_cast<int>(v[0]);
-                pos[1] = static_cast<int>(v[1]);
-                c = cm_rough_[pos];
+                const char c = cm_rough_[pos];
                 if (c > 99)
                   break;
                 sum += c;
 
                 sum_hist += cm_hist_[pos];
-                v[0] += dp[0];
-                v[1] += dp[1];
+                pos[0] += dpx;
+                pos[1] += dpy;
               }
-              if (c > 99)
+              if (i != dist)
                 continue;
               cost +=
-                  (map_info_.linear_resolution * distf / 100.0) *
+                  (map_info_.linear_resolution * grid_to_len / 100.0) *
                   (sum * cc_.weight_costmap_ + sum_hist * cc_.weight_remembered_);
             }
             cost += euclidCost(d, ec_rough_);
@@ -680,7 +503,7 @@ protected:
     }
     rough_cost_max_ = g[s_rough] + ec_rough_[0] * (range_ + local_range_);
   }
-  bool searchAvailablePos(Astar::Vec &s, const int xy_range, const int angle_range,
+  bool searchAvailablePos(Astar::Vec& s, const int xy_range, const int angle_range,
                           const int cost_acceptable = 50, const int min_xy_range = 0)
   {
     Astar::Vec d;
@@ -707,7 +530,7 @@ protected:
           s2.cycleUnsigned(s2[2], map_info_.angle);
           if (cm_[s2] >= cost_acceptable)
             continue;
-          auto cost = euclidCost(d, ec_);
+          const auto cost = euclidCost(d, ec_);
           if (cost < range_min)
           {
             range_min = cost;
@@ -740,13 +563,15 @@ protected:
     }
 
     Astar::Vec s, e;
-    metric2Grid(s[0], s[1], s[2],
-                start_.pose.position.x, start_.pose.position.y,
-                tf::getYaw(start_.pose.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, s[0], s[1], s[2],
+        start_.pose.position.x, start_.pose.position.y,
+        tf2::getYaw(start_.pose.orientation));
     s.cycleUnsigned(s[2], map_info_.angle);
-    metric2Grid(e[0], e[1], e[2],
-                goal_.pose.position.x, goal_.pose.position.y,
-                tf::getYaw(goal_.pose.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, e[0], e[1], e[2],
+        goal_.pose.position.x, goal_.pose.position.y,
+        tf2::getYaw(goal_.pose.orientation));
     e.cycleUnsigned(e[2], map_info_.angle);
     if (goal_changed)
     {
@@ -768,12 +593,11 @@ protected:
 
     const auto ts = boost::chrono::high_resolution_clock::now();
     reservable_priority_queue<Astar::PriorityVec> open;
-    auto &g = cost_estim_cache_;
 
-    g.clear(FLT_MAX);
+    cost_estim_cache_.clear(FLT_MAX);
     if (cm_[e] == 100)
     {
-      if (!searchAvailablePos(e, esc_range_, esc_angle_))
+      if (!searchAvailablePos(e, tolerance_range_, tolerance_angle_))
       {
         ROS_WARN("Oops! Goal is in Rock!");
         ++cnt_stuck_;
@@ -782,14 +606,14 @@ protected:
       ROS_INFO("Goal moved (%d, %d, %d)",
                e[0], e[1], e[2]);
       float x, y, yaw;
-      grid2Metric(e[0], e[1], e[2], x, y, yaw);
-      goal_.pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
+      grid_metric_converter::grid2Metric(map_info_, e[0], e[1], e[2], x, y, yaw);
+      goal_.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
       goal_.pose.position.x = x;
       goal_.pose.position.y = y;
     }
     if (cm_[s] == 100)
     {
-      if (!searchAvailablePos(s, esc_range_, esc_angle_))
+      if (!searchAvailablePos(s, tolerance_range_, tolerance_angle_))
       {
         ROS_WARN("Oops! You are in Rock!");
         return true;
@@ -797,13 +621,13 @@ protected:
     }
 
     e[2] = 0;
-    g[e] = -ec_rough_[0] * 0.5;  // Decrement to reduce calculation error
-    open.push(Astar::PriorityVec(g[e], g[e], e));
-    fillCostmap(open, g, s, e);
+    cost_estim_cache_[e] = -ec_rough_[0] * 0.5;  // Decrement to reduce calculation error
+    open.push(Astar::PriorityVec(cost_estim_cache_[e], cost_estim_cache_[e], e));
+    fillCostmap(open, cost_estim_cache_, s, e);
     const auto tnow = boost::chrono::high_resolution_clock::now();
     ROS_DEBUG("Cost estimation cache generated (%0.3f sec.)",
               boost::chrono::duration<float>(tnow - ts).count());
-    g[e] = 0;
+    cost_estim_cache_[e] = 0;
 
     if (goal_changed)
       cm_hyst_.clear(0);
@@ -830,7 +654,7 @@ protected:
         {
           p[2] = 0;
           float x, y, yaw;
-          grid2Metric(p[0], p[1], p[2], x, y, yaw);
+          grid_metric_converter::grid2Metric(map_info_, p[0], p[1], p[2], x, y, yaw);
           geometry_msgs::Point32 point;
           point.x = x;
           point.y = y;
@@ -858,11 +682,22 @@ protected:
     }
     pub_debug_.publish(debug);
   }
-  void cbMapUpdate(const costmap_cspace_msgs::CSpace3DUpdate::ConstPtr &msg)
+  void publishEmptyPath()
+  {
+    nav_msgs::Path path;
+    path.header.frame_id = robot_frame_;
+    path.header.stamp = ros::Time::now();
+    pub_path_.publish(path);
+  }
+
+  void cbMapUpdate(const costmap_cspace_msgs::CSpace3DUpdate::ConstPtr& msg)
   {
     if (!has_map_)
       return;
     ROS_DEBUG("Map updated");
+
+    const ros::Time now = ros::Time::now();
+    last_costmap_ = now;
 
     cm_ = cm_base_;
     cm_rough_ = cm_rough_base_;
@@ -872,7 +707,7 @@ protected:
       {
         sensor_msgs::PointCloud pc;
         pc.header = map_header_;
-        pc.header.stamp = ros::Time::now();
+        pc.header.stamp = now;
         Astar::Vec p;
         for (p[1] = 0; p[1] < cm_hist_bbf_.size()[1]; p[1]++)
         {
@@ -881,7 +716,7 @@ protected:
             if (cm_hist_bbf_[p].get() > bbf::probabilityToOdds(0.1))
             {
               float x, y, yaw;
-              grid2Metric(p[0], p[1], p[2], x, y, yaw);
+              grid_metric_converter::grid2Metric(map_info_, p[0], p[1], p[2], x, y, yaw);
               geometry_msgs::Point32 point;
               point.x = x;
               point.y = y;
@@ -913,8 +748,8 @@ protected:
       gp[0] = msg->x;
       gp[1] = msg->y;
       gp[2] = msg->yaw;
-      Astar::Vec gp_rough = gp;
-      gp_rough[2] = 0;
+      // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+      const Astar::Vec gp_rough({ gp[0], gp[1], 0 });  // NOLINT(whitespace/braces)
       const int hist_ignore_range_sq = hist_ignore_range_ * hist_ignore_range_;
       const int hist_ignore_range_max_sq =
           hist_ignore_range_max_ * hist_ignore_range_max_;
@@ -926,7 +761,7 @@ protected:
           for (p[2] = 0; p[2] < static_cast<int>(msg->angle); p[2]++)
           {
             const size_t addr = ((p[2] * msg->height) + p[1]) * msg->width + p[0];
-            char c = msg->data[addr];
+            const char c = msg->data[addr];
             if (c < cost_min)
               cost_min = c;
           }
@@ -940,8 +775,8 @@ protected:
           pos[2] = 0;
           if (cost_min == 100)
           {
-            Astar::Vec p2 = p - center;
-            float sqlen = p2.sqlen();
+            const Astar::Vec p2 = p - center;
+            const float sqlen = p2.sqlen();
             if (sqlen > hist_ignore_range_sq &&
                 sqlen < hist_ignore_range_max_sq)
             {
@@ -950,8 +785,8 @@ protected:
           }
           else if (cost_min >= 0)
           {
-            Astar::Vec p2 = p - center;
-            float sqlen = p2.sqlen();
+            const Astar::Vec p2 = p - center;
+            const float sqlen = p2.sqlen();
             if (sqlen < hist_ignore_range_max_sq)
             {
               cm_hist_bbf_[pos].update(remember_miss_odds_);
@@ -961,7 +796,7 @@ protected:
           for (p[2] = 0; p[2] < static_cast<int>(msg->angle); p[2]++)
           {
             const size_t addr = ((p[2] * msg->height) + p[1]) * msg->width + p[0];
-            char c = msg->data[addr];
+            const char c = msg->data[addr];
             if (overwrite_cost_)
             {
               if (c >= 0)
@@ -986,13 +821,15 @@ protected:
     }
 
     Astar::Vec s, e;
-    metric2Grid(s[0], s[1], s[2],
-                start_.pose.position.x, start_.pose.position.y,
-                tf::getYaw(start_.pose.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, s[0], s[1], s[2],
+        start_.pose.position.x, start_.pose.position.y,
+        tf2::getYaw(start_.pose.orientation));
     s.cycleUnsigned(s[2], map_info_.angle);
-    metric2Grid(e[0], e[1], e[2],
-                goal_.pose.position.x, goal_.pose.position.y,
-                tf::getYaw(goal_.pose.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, e[0], e[1], e[2],
+        goal_.pose.position.x, goal_.pose.position.y,
+        tf2::getYaw(goal_.pose.orientation));
     e.cycleUnsigned(e[2], map_info_.angle);
 
     if (cm_[e] == 100)
@@ -1004,7 +841,6 @@ protected:
     e[2] = 0;
 
     const auto ts = boost::chrono::high_resolution_clock::now();
-    auto &g = cost_estim_cache_;
 
     Astar::Vec p, p_cost_min;
     p[2] = 0;
@@ -1013,10 +849,10 @@ protected:
     {
       for (p[0] = static_cast<int>(msg->x); p[0] < static_cast<int>(msg->x + msg->width); p[0]++)
       {
-        if (cost_min > g[p])
+        if (cost_min > cost_estim_cache_[p])
         {
           p_cost_min = p;
-          cost_min = g[p];
+          cost_min = cost_estim_cache_[p];
         }
       }
     }
@@ -1036,9 +872,9 @@ protected:
       const Astar::Vec p = center.v_;
       erase.pop();
 
-      if (g[p] == FLT_MAX)
+      if (cost_estim_cache_[p] == FLT_MAX)
         continue;
-      g[p] = FLT_MAX;
+      cost_estim_cache_[p] = FLT_MAX;
 
       Astar::Vec d;
       d[2] = 0;
@@ -1052,7 +888,7 @@ protected:
           if ((unsigned int)next[0] >= (unsigned int)map_info_.width ||
               (unsigned int)next[1] >= (unsigned int)map_info_.height)
             continue;
-          float &gn = g[next];
+          const float& gn = cost_estim_cache_[next];
           if (gn == FLT_MAX)
             continue;
           if (gn < cost_min)
@@ -1070,13 +906,12 @@ protected:
     }
     {
       Astar::Vec p;
-      auto &g = cost_estim_cache_;
       p[2] = 0;
       for (p[0] = 0; p[0] < static_cast<int>(map_info_.width); p[0]++)
       {
         for (p[1] = 0; p[1] < static_cast<int>(map_info_.height); p[1]++)
         {
-          auto &gp = g[p];
+          const auto& gp = cost_estim_cache_[p];
           if (gp > rough_cost_max_)
           {
             open.push(Astar::PriorityVec(gp, gp, p));
@@ -1085,13 +920,13 @@ protected:
       }
     }
 
-    fillCostmap(open, g, s, e);
+    fillCostmap(open, cost_estim_cache_, s, e);
     const auto tnow = boost::chrono::high_resolution_clock::now();
     ROS_DEBUG("Cost estimation cache updated (%0.3f sec.)",
               boost::chrono::duration<float>(tnow - ts).count());
     publishCostmap();
   }
-  void cbMap(const costmap_cspace_msgs::CSpace3D::ConstPtr &msg)
+  void cbMap(const costmap_cspace_msgs::CSpace3D::ConstPtr& msg)
   {
     ROS_INFO("Map received");
     ROS_INFO(" linear_resolution %0.2f x (%dx%d) px", msg->info.linear_resolution,
@@ -1101,7 +936,10 @@ protected:
     ROS_INFO(" origin %0.3f m, %0.3f m, %0.3f rad",
              msg->info.origin.position.x,
              msg->info.origin.position.y,
-             tf::getYaw(msg->info.origin.orientation));
+             tf2::getYaw(msg->info.origin.orientation));
+
+    // Stop robot motion until next planning step
+    publishEmptyPath();
 
     float ec_val[3] =
         {
@@ -1109,7 +947,6 @@ protected:
           1.0f / max_vel_,
           1.0f * cc_.weight_ang_vel_ / max_ang_vel_
         };
-
     ec_ = Astar::Vecf(ec_val);
     ec_val[2] = 0;
     ec_rough_ = Astar::Vecf(ec_val);
@@ -1120,8 +957,11 @@ protected:
       map_info_ = msg->info;
       Astar::Vec d;
       range_ = static_cast<int>(search_range_ / map_info_.linear_resolution);
-      initMotionInterpCache(false, motion_interp_cache_, distf_cache_);
-      initMotionInterpCache(true, linear_interp_cache_, linear_distf_cache_);
+
+      costmap_cspace_msgs::MapMetaData3D map_info_linear(map_info_);
+      map_info_linear.angle = 1;
+      motion_cache_linear_.reset(new MotionCache<Astar::Vec, Astar::Vecf>(map_info_linear, range_, cm_rough_));
+      motion_cache_.reset(new MotionCache<Astar::Vec, Astar::Vecf>(map_info_, range_, cm_));
 
       search_list_.clear();
       for (d[0] = -range_; d[0] <= range_; d[0]++)
@@ -1159,7 +999,7 @@ protected:
               range_ * 2 + 1,
               static_cast<int>(map_info_.angle)
             };
-        auto &r = rotgm_[i];
+        auto& r = rotgm_[i];
         r.reset(Astar::Vec(size));
 
         Astar::Vec d;
@@ -1177,7 +1017,7 @@ protected:
                     d[2] * map_info_.angular_resolution
                   };
               auto v = Astar::Vecf(val);
-              rotate(v, -i * map_info_.angular_resolution);
+              v.rotate(-i * map_info_.angular_resolution);
               r[d] = v;
             }
           }
@@ -1190,6 +1030,7 @@ protected:
       map_info_ = msg->info;
     }
     map_header_ = msg->header;
+    jump_.setMapFrame(map_header_.frame_id);
 
     resolution_[0] = 1.0 / map_info_.linear_resolution;
     resolution_[1] = 1.0 / map_info_.linear_resolution;
@@ -1201,6 +1042,8 @@ protected:
     longcut_range_ = lroundf(longcut_range_f_ / map_info_.linear_resolution);
     esc_range_ = lroundf(esc_range_f_ / map_info_.linear_resolution);
     esc_angle_ = map_info_.angle / 8;
+    tolerance_range_ = lroundf(tolerance_range_f_ / map_info_.linear_resolution);
+    tolerance_angle_ = lroundf(tolerance_angle_f_ / map_info_.angular_resolution);
     goal_tolerance_lin_ = lroundf(goal_tolerance_lin_f_ / map_info_.linear_resolution);
     goal_tolerance_ang_ = lroundf(goal_tolerance_ang_f_ / map_info_.angular_resolution);
 
@@ -1260,10 +1103,39 @@ protected:
     }
   }
 
+  void updateStart()
+  {
+    geometry_msgs::PoseStamped start;
+    start.header.frame_id = robot_frame_;
+    start.header.stamp = ros::Time(0);
+    start.pose.orientation.x = 0.0;
+    start.pose.orientation.y = 0.0;
+    start.pose.orientation.z = 0.0;
+    start.pose.orientation.w = 1.0;
+    start.pose.position.x = 0;
+    start.pose.position.y = 0;
+    start.pose.position.z = 0;
+    try
+    {
+      geometry_msgs::TransformStamped trans =
+          tfbuf_.lookupTransform(map_header_.frame_id, robot_frame_, ros::Time(), ros::Duration(0.1));
+      tf2::doTransform(start, start, trans);
+    }
+    catch (tf2::TransformException& e)
+    {
+      has_start_ = false;
+      return;
+    }
+    start_ = start;
+    has_start_ = true;
+  }
+
 public:
   Planner3dNode()
     : nh_()
     , pnh_("~")
+    , tfl_(tfbuf_)
+    , jump_(tfbuf_)
   {
     neonavigation_common::compat::checkCompatMode();
     sub_map_ = neonavigation_common::compat::subscribe(
@@ -1275,9 +1147,6 @@ public:
     sub_goal_ = neonavigation_common::compat::subscribe(
         nh_, "move_base_simple/goal",
         pnh_, "goal", 1, &Planner3dNode::cbGoal, this);
-    pub_path_ = neonavigation_common::compat::advertise<nav_msgs::Path>(
-        nh_, "path",
-        pnh_, "path", 1, true);
     pub_debug_ = pnh_.advertise<sensor_msgs::PointCloud>("debug", 1, true);
     pub_hist_ = pnh_.advertise<sensor_msgs::PointCloud>("remembered", 1, true);
     pub_start_ = pnh_.advertise<geometry_msgs::PoseStamped>("path_start", 1, true);
@@ -1292,9 +1161,26 @@ public:
     act_->registerGoalCallback(boost::bind(&Planner3dNode::cbAction, this));
     act_->registerPreemptCallback(boost::bind(&Planner3dNode::cbPreempt, this));
 
+    pnh_.param("use_path_with_velocity", use_path_with_velocity_, false);
+    if (use_path_with_velocity_)
+    {
+      pub_path_velocity_ = nh_.advertise<trajectory_tracker_msgs::PathWithVelocity>(
+          "path_velocity", 1, true);
+    }
+    else
+    {
+      pub_path_ = neonavigation_common::compat::advertise<nav_msgs::Path>(
+          nh_, "path",
+          pnh_, "path", 1, true);
+    }
+
     pnh_.param_cast("freq", freq_, 4.0f);
     pnh_.param_cast("freq_min", freq_min_, 2.0f);
     pnh_.param_cast("search_range", search_range_, 0.4f);
+
+    double costmap_watchdog;
+    pnh_.param("costmap_watchdog", costmap_watchdog, 0.0);
+    costmap_watchdog_ = ros::Duration(costmap_watchdog);
 
     pnh_.param_cast("max_vel", max_vel_, 0.3f);
     pnh_.param_cast("max_ang_vel", max_ang_vel_, 0.6f);
@@ -1303,6 +1189,7 @@ public:
     pnh_.param_cast("weight_backward", cc_.weight_backward_, 0.9f);
     pnh_.param_cast("weight_ang_vel", cc_.weight_ang_vel_, 1.0f);
     pnh_.param_cast("weight_costmap", cc_.weight_costmap_, 50.0f);
+    pnh_.param_cast("weight_costmap_turn", cc_.weight_costmap_turn_, 0.0f);
     pnh_.param_cast("weight_remembered", cc_.weight_remembered_, 1000.0f);
     pnh_.param_cast("cost_in_place_turn", cc_.in_place_turn_, 30.0f);
     pnh_.param_cast("hysteresis_max_dist", cc_.hysteresis_max_dist_, 0.3f);
@@ -1328,12 +1215,21 @@ public:
     pnh_.param("local_range", local_range_f_, 2.5);
     pnh_.param("longcut_range", longcut_range_f_, 0.0);
     pnh_.param("esc_range", esc_range_f_, 0.25);
+    pnh_.param("tolerance_range", tolerance_range_f_, 0.25);
+    pnh_.param("tolerance_angle", tolerance_angle_f_, 0.0);
 
     pnh_.param_cast("sw_wait", sw_wait_, 2.0f);
     pnh_.param("find_best", find_best_, true);
 
-    pnh_.param("pos_jump", pos_jump_, 1.0);
-    pnh_.param("yaw_jump", yaw_jump_, 1.5);
+    pnh_.param("robot_frame", robot_frame_, std::string("base_link"));
+
+    double pos_jump, yaw_jump;
+    std::string jump_detect_frame;
+    pnh_.param("pos_jump", pos_jump, 1.0);
+    pnh_.param("yaw_jump", yaw_jump, 1.5);
+    pnh_.param("jump_detect_frame", jump_detect_frame, std::string("base_link"));
+    jump_.setBaseFrame(jump_detect_frame);
+    jump_.setThresholds(pos_jump, yaw_jump);
 
     pnh_.param("force_goal_orientation", force_goal_orientation_, true);
 
@@ -1386,6 +1282,9 @@ public:
     escaping_ = false;
     cnt_stuck_ = 0;
 
+    diag_updater_.setHardwareID("none");
+    diag_updater_.add("Path Planner Status", this, &Planner3dNode::diagnoseStatus);
+
     act_->start();
   }
   void spin()
@@ -1393,60 +1292,47 @@ public:
     ros::Rate wait(freq_);
     ROS_DEBUG("Initialized");
 
-    geometry_msgs::PoseStamped start_prev;
-    start_prev.pose.orientation.w = 1.0;
-
     while (ros::ok())
     {
       wait.sleep();
       ros::spinOnce();
 
+      const ros::Time now = ros::Time::now();
+
       if (has_map_)
       {
-        start_.header.frame_id = "base_link";
-        start_.header.stamp = ros::Time(0);
-        start_.pose.orientation.x = 0.0;
-        start_.pose.orientation.y = 0.0;
-        start_.pose.orientation.z = 0.0;
-        start_.pose.orientation.w = 1.0;
-        start_.pose.position.x = 0;
-        start_.pose.position.y = 0;
-        start_.pose.position.z = 0;
-        try
+        updateStart();
+        if (jump_.detectJump())
         {
-          tfl_.waitForTransform(map_header_.frame_id, "base_link",
-                                map_header_.stamp, ros::Duration(0.1));
-          tfl_.transformPose(map_header_.frame_id, start_, start_);
-        }
-        catch (tf::TransformException &e)
-        {
-          // ROS_INFO("planner_cspace: Transform failed %s", e.what());
-          continue;
-        }
-        {
-          const float x_diff = start_.pose.position.x - start_prev.pose.position.x;
-          const float y_diff = start_.pose.position.y - start_prev.pose.position.y;
-          float yaw_diff = tf::getYaw(start_.pose.orientation) - tf::getYaw(start_prev.pose.orientation);
-          if (yaw_diff > M_PI)
-            yaw_diff -= M_PI * 2;
-          else if (yaw_diff < -M_PI)
-            yaw_diff += M_PI * 2;
-
-          if (powf(x_diff, 2.0) + powf(y_diff, 2.0) > powf(pos_jump_, 2.0) ||
-              fabs(yaw_diff) > yaw_jump_)
-          {
-            ROS_ERROR("Position jumped (%f, %f, %f); clearing history", x_diff, y_diff, yaw_diff);
-            cm_hist_bbf_.clear(bbf::BinaryBayesFilter(bbf::MIN_ODDS));
-          }
-          start_prev = start_;
+          cm_hist_bbf_.clear(bbf::BinaryBayesFilter(bbf::MIN_ODDS));
         }
 
-        has_start_ = true;
         if (!goal_updated_ && has_goal_)
           updateGoal();
       }
 
-      if (has_map_ && has_goal_ && has_start_)
+      bool has_costmap(false);
+      if (costmap_watchdog_ > ros::Duration(0))
+      {
+        if (last_costmap_ + costmap_watchdog_ < now)
+        {
+          ROS_WARN(
+              "Navigation is stopping since the costmap is too old (costmap: %0.3f)",
+              last_costmap_.toSec());
+          status_.error = planner_cspace_msgs::PlannerStatus::DATA_MISSING;
+          publishEmptyPath();
+        }
+        else
+        {
+          has_costmap = true;
+        }
+      }
+      else
+      {
+        has_costmap = true;
+      }
+
+      if (has_map_ && has_goal_ && has_start_ && has_costmap)
       {
         if (act_->isActive())
         {
@@ -1457,12 +1343,12 @@ public:
 
         if (status_.status == planner_cspace_msgs::PlannerStatus::FINISHING)
         {
-          float yaw_s = tf::getYaw(start_.pose.orientation);
+          const float yaw_s = tf2::getYaw(start_.pose.orientation);
           float yaw_g;
           if (force_goal_orientation_)
-            yaw_g = tf::getYaw(goal_raw_.pose.orientation);
+            yaw_g = tf2::getYaw(goal_raw_.pose.orientation);
           else
-            yaw_g = tf::getYaw(goal_.pose.orientation);
+            yaw_g = tf2::getYaw(goal_.pose.orientation);
 
           float yaw_diff = yaw_s - yaw_g;
           if (yaw_diff > M_PI)
@@ -1499,9 +1385,18 @@ public:
           }
           nav_msgs::Path path;
           path.header = map_header_;
-          path.header.stamp = ros::Time::now();
+          path.header.stamp = now;
           makePlan(start_.pose, goal_.pose, path, true);
-          pub_path_.publish(path);
+          if (use_path_with_velocity_)
+          {
+            // NaN velocity means that don't care the velocity
+            pub_path_velocity_.publish(
+                trajectory_tracker_msgs::toPathWithVelocity(path, std::numeric_limits<double>::quiet_NaN()));
+          }
+          else
+          {
+            pub_path_.publish(path);
+          }
 
           if (switchDetect(path))
           {
@@ -1515,168 +1410,39 @@ public:
       }
       else if (!has_goal_)
       {
-        nav_msgs::Path path;
-        path.header = map_header_;
-        path.header.stamp = ros::Time::now();
-        pub_path_.publish(path);
+        publishEmptyPath();
       }
       pub_status_.publish(status_);
+      diag_updater_.force_update();
     }
   }
 
 protected:
-  void grid2Metric(
-      const int x, const int y, const int yaw,
-      float &gx, float &gy, float &gyaw)
-  {
-    gx = (x + 0.5) * map_info_.linear_resolution + map_info_.origin.position.x;
-    gy = (y + 0.5) * map_info_.linear_resolution + map_info_.origin.position.y;
-    gyaw = yaw * map_info_.angular_resolution;
-  }
-  void grid2Metric(const std::list<Astar::Vec> &path_grid,
-                   nav_msgs::Path &path, const Astar::Vec &v_start)
-  {
-    // static int cnt = 0;
-    // cnt ++;
-    float x_ = 0, y_ = 0, yaw_ = 0;
-    Astar::Vec p_;
-    bool init = false;
-    for (auto &p : path_grid)
-    {
-      float x, y, yaw;
-      grid2Metric(p[0], p[1], p[2], x, y, yaw);
-      geometry_msgs::PoseStamped ps;
-      ps.header = path.header;
-
-      // printf("%d %d %d  %f\n", p[0], p[1], p[2], as_.g[p]);
-      if (init)
-      {
-        auto ds = v_start - p;
-        auto d = p - p_;
-        float diff_val[3] =
-            {
-              d[0] * map_info_.linear_resolution,
-              d[1] * map_info_.linear_resolution,
-              p[2] * map_info_.angular_resolution
-            };
-        Astar::Vecf motion_(diff_val);
-        rotate(motion_, -p_[2] * map_info_.angular_resolution);
-
-        float inter = 0.1 / d.len();
-
-        const Astar::Vecf motion = motion_;
-        float cos_v = cosf(motion[2]);
-        float sin_v = sinf(motion[2]);
-        if (d[0] == 0 && d[1] == 0)
-        {
-          ps.pose.position.x = x;
-          ps.pose.position.y = y;
-          ps.pose.position.z = 0;
-          ps.pose.orientation =
-              tf::createQuaternionMsgFromYaw(yaw);
-          path.poses.push_back(ps);
-        }
-        else if (fabs(sin_v) < 0.001 ||
-                 ds.sqlen() > local_range_ * local_range_)
-        {
-          for (float i = 0; i < 1.0; i += inter)
-          {
-            float x2, y2, yaw2;
-            x2 = x_ * (1 - i) + x * i;
-            y2 = y_ * (1 - i) + y * i;
-            yaw2 = yaw_ * (1 - i) + yaw * i;
-            ps.pose.position.x = x2;
-            ps.pose.position.y = y2;
-            ps.pose.position.z = 0;
-            ps.pose.orientation =
-                tf::createQuaternionMsgFromYaw(yaw2);
-            path.poses.push_back(ps);
-          }
-        }
-        else
-        {
-          float r1 = motion[1] + motion[0] * cos_v / sin_v;
-          float r2 = sqrtf(powf(motion[0], 2.0) + powf(motion[0] * cos_v / sin_v, 2.0));
-          if (motion[0] * sin_v < 0)
-            r2 = -r2;
-
-          float cx, cy, cx_, cy_, dyaw;
-          dyaw = yaw - yaw_;
-          if (dyaw < -M_PI)
-            dyaw += 2 * M_PI;
-          else if (dyaw > M_PI)
-            dyaw -= 2 * M_PI;
-
-          cx = x + r2 * cosf(yaw + M_PI / 2);
-          cy = y + r2 * sinf(yaw + M_PI / 2);
-          cx_ = x_ + r1 * cosf(yaw_ + M_PI / 2);
-          cy_ = y_ + r1 * sinf(yaw_ + M_PI / 2);
-
-          for (float i = 0; i < 1.0; i += inter)
-          {
-            float r = r1 * (1.0 - i) + r2 * i;
-            float cx2 = cx_ * (1.0 - i) + cx * i;
-            float cy2 = cy_ * (1.0 - i) + cy * i;
-            float cyaw = yaw_ + i * dyaw;
-
-            float x2, y2, yaw2;
-            x2 = cx2 - r * cosf(cyaw + M_PI / 2);
-            y2 = cy2 - r * sinf(cyaw + M_PI / 2);
-            yaw2 = cyaw;
-            ps.pose.position.x = x2;
-            ps.pose.position.y = y2;
-            ps.pose.position.z = 0;
-            ps.pose.orientation =
-                tf::createQuaternionMsgFromYaw(yaw2);
-            path.poses.push_back(ps);
-          }
-          ps.pose.position.x = x;
-          ps.pose.position.y = y;
-          ps.pose.position.z = 0;
-          ps.pose.orientation =
-              tf::createQuaternionMsgFromYaw(yaw);
-          path.poses.push_back(ps);
-        }
-      }
-
-      x_ = x;
-      y_ = y;
-      yaw_ = yaw;
-      p_ = p;
-      init = true;
-    }
-  }
-  void metric2Grid(
-      int &x, int &y, int &yaw,
-      const float gx, const float gy, const float gyaw)
-  {
-    x = static_cast<int>((gx - map_info_.origin.position.x) / map_info_.linear_resolution);
-    y = static_cast<int>((gy - map_info_.origin.position.y) / map_info_.linear_resolution);
-    yaw = lroundf(gyaw / map_info_.angular_resolution);
-  }
-  bool makePlan(const geometry_msgs::Pose &gs, const geometry_msgs::Pose &ge,
-                nav_msgs::Path &path, bool hyst)
+  bool makePlan(const geometry_msgs::Pose& gs, const geometry_msgs::Pose& ge,
+                nav_msgs::Path& path, bool hyst)
   {
     Astar::Vec s, e;
-    metric2Grid(s[0], s[1], s[2],
-                gs.position.x, gs.position.y, tf::getYaw(gs.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, s[0], s[1], s[2],
+        gs.position.x, gs.position.y, tf2::getYaw(gs.orientation));
     s.cycleUnsigned(s[2], map_info_.angle);
-    metric2Grid(e[0], e[1], e[2],
-                ge.position.x, ge.position.y, tf::getYaw(ge.orientation));
+    grid_metric_converter::metric2Grid(
+        map_info_, e[0], e[1], e[2],
+        ge.position.x, ge.position.y, tf2::getYaw(ge.orientation));
     e.cycleUnsigned(e[2], map_info_.angle);
 
     geometry_msgs::PoseStamped p;
     p.header = map_header_;
     float x, y, yaw;
-    grid2Metric(e[0], e[1], e[2], x, y, yaw);
-    p.pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
+    grid_metric_converter::grid2Metric(map_info_, e[0], e[1], e[2], x, y, yaw);
+    p.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
     p.pose.position.x = x;
     p.pose.position.y = y;
     pub_end_.publish(p);
 
     if (cm_[s] == 100)
     {
-      if (!searchAvailablePos(s, esc_range_, esc_angle_))
+      if (!searchAvailablePos(s, tolerance_range_, tolerance_angle_))
       {
         ROS_WARN("Oops! You are in Rock!");
         status_.error = planner_cspace_msgs::PlannerStatus::IN_ROCK;
@@ -1684,8 +1450,8 @@ protected:
       }
       ROS_INFO("Start moved");
     }
-    auto s_rough = s;
-    s_rough[2] = 0;
+    // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+    const Astar::Vec s_rough({ s[0], s[1], 0 });  // NOLINT(whitespace/braces)
 
     if (cost_estim_cache_[s_rough] == FLT_MAX)
     {
@@ -1700,8 +1466,8 @@ protected:
           ROS_INFO("Temporary goal (%d, %d, %d)",
                    e[0], e[1], e[2]);
           float x, y, yaw;
-          grid2Metric(e[0], e[1], e[2], x, y, yaw);
-          goal_.pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
+          grid_metric_converter::grid2Metric(map_info_, e[0], e[1], e[2], x, y, yaw);
+          goal_.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
           goal_.pose.position.x = x;
           goal_.pose.position.y = y;
 
@@ -1712,8 +1478,8 @@ protected:
       return false;
     }
 
-    grid2Metric(s[0], s[1], s[2], x, y, yaw);
-    p.pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
+    grid_metric_converter::grid2Metric(map_info_, s[0], s[1], s[2], x, y, yaw);
+    p.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
     p.pose.position.x = x;
     p.pose.position.y = y;
     pub_start_.publish(p);
@@ -1776,7 +1542,7 @@ protected:
     ROS_DEBUG("Path found (%0.4f sec.)",
               boost::chrono::duration<float>(tnow - ts).count());
 
-    grid2Metric(path_grid, path, s);
+    grid_metric_converter::grid2MetricPath(map_info_, local_range_, path_grid, path, s);
 
     if (hyst)
     {
@@ -1784,7 +1550,7 @@ protected:
       const float max_dist = cc_.hysteresis_max_dist_ / map_info_.linear_resolution;
       const float expand_dist = cc_.hysteresis_expand_ / map_info_.linear_resolution;
       const int path_range = range_ + max_dist + expand_dist + 1;
-      for (auto &p : path_grid)
+      for (auto& p : path_grid)
       {
         Astar::Vec d;
         for (d[0] = -path_range; d[0] <= path_range; d[0]++)
@@ -1803,9 +1569,9 @@ protected:
 
       cm_hyst_.clear(100);
       // const auto ts = boost::chrono::high_resolution_clock::now();
-      for (auto &ps : path_points)
+      for (auto& ps : path_points)
       {
-        auto &p = ps.first;
+        auto& p = ps.first;
         float d_min = FLT_MAX;
         auto it_prev = path_grid.begin();
         for (auto it = path_grid.begin(); it != path_grid.end(); it++)
@@ -1834,9 +1600,9 @@ protected:
 
     return true;
   }
-  std::vector<Astar::Vec> &cbSearch(
-      const Astar::Vec &p,
-      const Astar::Vec &s, const Astar::Vec &e)
+  std::vector<Astar::Vec>& cbSearch(
+      const Astar::Vec& p,
+      const Astar::Vec& s, const Astar::Vec& e)
   {
     const auto ds = s - p;
     rot_cache_ = &rotgm_[p[2]];
@@ -1851,34 +1617,17 @@ protected:
     euclid_cost_coef_ = ec_rough_;
     return search_list_rough_;
   }
-  bool cbProgress(const std::list<Astar::Vec> &path_grid)
+  bool cbProgress(const std::list<Astar::Vec>& path_grid)
   {
-    nav_msgs::Path path;
-    path.header = map_header_;
-    path.header.stamp = ros::Time::now();
-    // grid2Metric(path_grid, path);
-    pub_path_.publish(path);
+    publishEmptyPath();
     ROS_WARN("Search timed out");
     return true;
   }
-  void rotate(Astar::Vecf &v, const float &ang)
-  {
-    const Astar::Vecf tmp = v;
-    const float cos_v = cosf(ang);
-    const float sin_v = sinf(ang);
 
-    v[0] = cos_v * tmp[0] - sin_v * tmp[1];
-    v[1] = sin_v * tmp[0] + cos_v * tmp[1];
-    v[2] = v[2] + ang;
-    if (v[2] > M_PI)
-      v[2] -= 2 * M_PI;
-    else if (v[2] < -M_PI)
-      v[2] += 2 * M_PI;
-  }
-  float cbCostEstim(const Astar::Vec &s, const Astar::Vec &e)
+  float cbCostEstim(const Astar::Vec& s, const Astar::Vec& e)
   {
-    auto s2 = s;
-    s2[2] = 0;
+    // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+    Astar::Vec s2({ s[0], s[1], 0 });  // NOLINT(whitespace/braces)
     auto cost = cost_estim_cache_[s2];
     if (cost == FLT_MAX)
       return FLT_MAX;
@@ -1890,28 +1639,26 @@ protected:
     }
     return cost;
   }
-  bool switchDetect(const nav_msgs::Path &path)
+  bool switchDetect(const nav_msgs::Path& path)
   {
     geometry_msgs::Pose p_prev;
     bool first(true);
     bool dir_set(false);
     bool dir_prev(false);
-    for (auto &p : path.poses)
+    for (const auto& p : path.poses)
     {
       if (!first)
       {
-        float len = hypotf(
+        const float len = hypotf(
             p.pose.position.y - p_prev.position.y,
             p.pose.position.x - p_prev.position.x);
         if (len > 0.001)
         {
-          float yaw = tf::getYaw(p.pose.orientation);
-          float vel_yaw = atan2f(
+          const float yaw = tf2::getYaw(p.pose.orientation);
+          const float vel_yaw = atan2f(
               p.pose.position.y - p_prev.position.y,
               p.pose.position.x - p_prev.position.x);
-          bool dir = false;
-          if (cosf(yaw) * cosf(vel_yaw) + sinf(yaw) * sinf(vel_yaw) < 0)
-            dir = true;
+          const bool dir = (cosf(yaw) * cosf(vel_yaw) + sinf(yaw) * sinf(vel_yaw) < 0);
 
           if (dir_set && (dir_prev ^ dir))
           {
@@ -1926,9 +1673,9 @@ protected:
     }
     return false;
   }
-  float cbCost(const Astar::Vec &s, Astar::Vec &e,
-               const Astar::Vec &v_goal,
-               const Astar::Vec &v_start,
+  float cbCost(const Astar::Vec& s, Astar::Vec& e,
+               const Astar::Vec& v_goal,
+               const Astar::Vec& v_start,
                const bool hyst)
   {
     Astar::Vec d_raw = e - s;
@@ -1940,9 +1687,7 @@ protected:
     {
       // In-place turn
       int sum = 0;
-      int dir = 1;
-      if (d[2] > static_cast<int>(map_info_.angle) / 2)
-        dir = -1;
+      const int dir = d[2] > static_cast<int>(map_info_.angle) / 2 ? -1 : 1;
       Astar::Vec pos = s;
       for (int i = 0; i < abs(d[2]); i++)
       {
@@ -1957,7 +1702,10 @@ protected:
         sum += c;
       }
 
-      float cost = sum * map_info_.angular_resolution * ec_[2] / ec_[0];
+      const float cost =
+          sum * map_info_.angular_resolution * ec_[2] / ec_[0] +
+          sum * map_info_.angular_resolution * cc_.weight_costmap_turn_ / 100.0;
+      // simplified from sum * map_info_.angular_resolution * abs(d[2]) * cc_.weight_costmap_turn_ / (100.0 * abs(d[2]))
       return cc_.in_place_turn_ + cost;
     }
 
@@ -1984,12 +1732,9 @@ protected:
 
     const float dist = motion.len();
 
-    bool forward(true);
     if (motion[0] < 0)
-      forward = false;
-
-    if (!forward)
     {
+      // Going backward
       cost *= 1.0 + cc_.weight_backward_;
     }
 
@@ -2003,35 +1748,32 @@ protected:
 
       // Go-straight
       int sum = 0, sum_hyst = 0;
-      int num = 0;
       auto d_index = d;
       int syaw = s[2];
       d_index[2] = e[2];
       d_index.cycleUnsigned(syaw, map_info_.angle);
       d_index.cycleUnsigned(d_index[2], map_info_.angle);
-      const auto cache_page = motion_interp_cache_[syaw].find(d_index);
-      if (cache_page == motion_interp_cache_[syaw].end())
+      const auto cache_page = motion_cache_->find(syaw, d_index);
+      if (cache_page == motion_cache_->end(syaw))
         return -1;
-      for (const auto &pos_diff : cache_page->second)
+      const int num = cache_page->second.getMotion().size();
+      for (const auto& pos_diff : cache_page->second.getMotion())
       {
-        const int posi[3] =
-            {
-              s[0] + pos_diff[0], s[1] + pos_diff[1], pos_diff[2]
-            };
-        const Astar::Vec pos(posi);
+        // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+        const Astar::Vec pos(
+            { s[0] + pos_diff[0], s[1] + pos_diff[1], pos_diff[2] });  // NOLINT(whitespace/braces)
         const auto c = cm_[pos];
         if (c > 99)
           return -1;
         if (hyst)
         {
-          auto pos_rough = pos;
-          pos_rough[2] = 0;
+          // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+          const Astar::Vec pos_rough({ pos[0], pos[1], 0 });  // NOLINT(whitespace/braces)
           sum_hyst += cm_hyst_[pos_rough];
         }
         sum += c;
-        num++;
       }
-      const float &distf = distf_cache_[s[2]][d_index];
+      const float distf = cache_page->second.getDistance();
       cost += sum * map_info_.linear_resolution * distf * cc_.weight_costmap_ / (100.0 * num);
       cost += sum_hyst * map_info_.linear_resolution * distf * cc_.weight_hysteresis_ / (100.0 * num);
     }
@@ -2049,9 +1791,9 @@ protected:
       const float sin_v = sinf(motion[2]);
 
       const float r1 = motion[1] + motion[0] * cos_v / sin_v;
-      float r2 = sqrtf(powf(motion[0], 2.0) + powf(motion[0] * cos_v / sin_v, 2.0));
-      if (motion[0] * sin_v < 0)
-        r2 = -r2;
+      const float r2 = std::copysign(
+          sqrtf(powf(motion[0], 2.0) + powf(motion[0] * cos_v / sin_v, 2.0)),
+          motion[0] * sin_v);
 
       // curveture at the start_ pose and the end pose must be same
       if (fabs(r1 - r2) >= map_info_.linear_resolution * 1.5)
@@ -2066,7 +1808,7 @@ protected:
       float ang_vel = cos_v * vel / (cos_v * motion[0] + sin_v * motion[1]);
       if (fabs(ang_vel) > max_ang_vel_)
       {
-        ang_vel = signf(ang_vel) * max_ang_vel_;
+        ang_vel = std::copysign(1.0f, ang_vel) * max_ang_vel_;
         vel = fabs(curv_radius) * max_ang_vel_;
 
         // Curve deceleration penalty
@@ -2075,45 +1817,70 @@ protected:
 
       {
         int sum = 0, sum_hyst = 0;
-        int num = 0;
         auto d_index = d;
         int syaw = s[2];
         d_index[2] = e[2];
         d_index.cycleUnsigned(syaw, map_info_.angle);
         d_index.cycleUnsigned(d_index[2], map_info_.angle);
-        const auto cache_page = motion_interp_cache_[syaw].find(d_index);
-        if (cache_page == motion_interp_cache_[syaw].end())
+        const auto cache_page = motion_cache_->find(syaw, d_index);
+        if (cache_page == motion_cache_->end(syaw))
           return -1;
-        for (const auto &pos_diff : cache_page->second)
+        const int num = cache_page->second.getMotion().size();
+        for (const auto& pos_diff : cache_page->second.getMotion())
         {
-          const int posi[3] =
-              {
-                s[0] + pos_diff[0], s[1] + pos_diff[1], pos_diff[2]
-              };
-          const Astar::Vec pos(posi);
+          // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+          const Astar::Vec pos(
+              { s[0] + pos_diff[0], s[1] + pos_diff[1], pos_diff[2] });  // NOLINT(whitespace/braces)
           const auto c = cm_[pos];
           if (c > 99)
             return -1;
           sum += c;
-          num++;
           if (hyst)
           {
-            auto pos_rough = pos;
-            pos_rough[2] = 0;
+            // FIXME(at-wat): remove NOLINT after clang-format or roslint supports it
+            const Astar::Vec pos_rough({ pos[0], pos[1], 0 });  // NOLINT(whitespace/braces)
             sum_hyst += cm_hyst_[pos_rough];
           }
         }
-        const float &distf = distf_cache_[s[2]][d_index];
+        const float distf = cache_page->second.getDistance();
         cost += sum * map_info_.linear_resolution * distf * cc_.weight_costmap_ / (100.0 * num);
+        cost += sum * map_info_.angular_resolution * abs(d[2]) * cc_.weight_costmap_turn_ / (100.0 * num);
         cost += sum_hyst * map_info_.linear_resolution * distf * cc_.weight_hysteresis_ / (100.0 * num);
       }
     }
 
     return cost;
   }
+
+  void diagnoseStatus(diagnostic_updater::DiagnosticStatusWrapper& stat)
+  {
+    switch (status_.error)
+    {
+      case planner_cspace_msgs::PlannerStatus::GOING_WELL:
+        stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "Going well.");
+        break;
+      case planner_cspace_msgs::PlannerStatus::IN_ROCK:
+        stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "The robot is in rock.");
+        break;
+      case planner_cspace_msgs::PlannerStatus::PATH_NOT_FOUND:
+        stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Path not found.");
+        break;
+      case planner_cspace_msgs::PlannerStatus::DATA_MISSING:
+        stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Required data is missing.");
+        break;
+      case planner_cspace_msgs::PlannerStatus::INTERNAL_ERROR:
+        stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Planner internal error.");
+        break;
+      default:
+        stat.summary(diagnostic_msgs::DiagnosticStatus::ERROR, "Unknown error.");
+        break;
+    }
+    stat.addf("status", "%u", status_.status);
+    stat.addf("error", "%u", status_.error);
+  }
 };
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
   ros::init(argc, argv, "planner_3d");
 
