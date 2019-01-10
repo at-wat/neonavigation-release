@@ -31,7 +31,8 @@
 
 #include <map_organizer_msgs/OccupancyGridArray.h>
 #include <std_msgs/Int32.h>
-#include <tf/transform_broadcaster.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include <vector>
 
@@ -41,23 +42,23 @@ map_organizer_msgs::OccupancyGridArray maps;
 std::vector<nav_msgs::MapMetaData> orig_mapinfos;
 int floor_cur = 0;
 
-void cbMaps(const map_organizer_msgs::OccupancyGridArray::Ptr &msg)
+void cbMaps(const map_organizer_msgs::OccupancyGridArray::Ptr& msg)
 {
   ROS_INFO("Map array received");
   maps = *msg;
   orig_mapinfos.clear();
-  for (auto &map : maps.maps)
+  for (auto& map : maps.maps)
   {
     orig_mapinfos.push_back(map.info);
     map.info.origin.position.z = 0.0;
   }
 }
-void cbFloor(const std_msgs::Int32::Ptr &msg)
+void cbFloor(const std_msgs::Int32::Ptr& msg)
 {
   floor_cur = msg->data;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "select_map");
   ros::NodeHandle pnh("~");
@@ -74,11 +75,11 @@ int main(int argc, char **argv)
       nh, "map",
       nh, "/map", 1, true);
 
-  tf::TransformBroadcaster tfb;
+  tf2_ros::TransformBroadcaster tfb;
   geometry_msgs::TransformStamped trans;
   trans.header.frame_id = "map_ground";
   trans.child_frame_id = "map";
-  trans.transform.rotation = tf::createQuaternionMsgFromYaw(0.0);
+  trans.transform.rotation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), 0.0));
 
   ros::Rate wait(10);
   int floor_prev = -1;
