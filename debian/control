@@ -1,0 +1,12 @@
+Source: ros-indigo-safety-limiter
+Section: misc
+Priority: extra
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), libeigen3-dev, ros-indigo-catkin, ros-indigo-cmake-modules, ros-indigo-diagnostic-updater, ros-indigo-geometry-msgs, ros-indigo-neonavigation-common, ros-indigo-pcl-ros, ros-indigo-roscpp, ros-indigo-roslint, ros-indigo-rostest, ros-indigo-sensor-msgs, ros-indigo-tf2-ros, ros-indigo-tf2-sensor-msgs, ros-indigo-xmlrpcpp
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-indigo-safety-limiter
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libeigen3-dev, ros-indigo-cmake-modules, ros-indigo-diagnostic-updater, ros-indigo-geometry-msgs, ros-indigo-neonavigation-common, ros-indigo-pcl-ros, ros-indigo-roscpp, ros-indigo-sensor-msgs, ros-indigo-tf2-ros, ros-indigo-tf2-sensor-msgs, ros-indigo-xmlrpcpp
+Description: Motion limiter package for collision prevention
