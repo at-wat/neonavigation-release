@@ -31,7 +31,7 @@
 
 #include <gtest/gtest.h>
 
-#include <blockmem_gridmap.h>
+#include <planner_cspace/blockmem_gridmap.h>
 
 TEST(BlockmemGridmap, SpacialAccessPerformance)
 {
@@ -158,7 +158,7 @@ TEST(BlockmemGridmap, SpacialAccessPerformance)
   ASSERT_LT(te0 - ts0, te1 - ts1);
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);
 
