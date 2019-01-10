@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2014-2017, the neonavigation authors
+ * Copyright (c) 2014, ATR, Atsushi Watanabe
+ * Copyright (c) 2014-2018, the neonavigation authors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -10,8 +11,8 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the copyright holder nor the names of its 
- *       contributors may be used to endorse or promote products derived from 
+ *     * Neither the name of the copyright holder nor the names of its
+ *       contributors may be used to endorse or promote products derived from
  *       this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
@@ -27,26 +28,36 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef FILTER_H
-#define FILTER_H
+#ifndef TRAJECTORY_TRACKER_AVERAGE_H
+#define TRAJECTORY_TRACKER_AVERAGE_H
 
-class Filter
+namespace trajectory_tracker
+{
+template <typename T>
+class Average
 {
 public:
-  enum Type
+  inline Average()
+    : sum()
+    , num(0)
   {
-    FILTER_HPF,
-    FILTER_LPF
-  };
+  }
+  inline void operator+=(const T& val)
+  {
+    sum += val;
+    num++;
+  }
+  inline operator T() const
+  {
+    if (num == 0)
+      return 0;
+    return sum / num;
+  }
 
 private:
-  double time_const_;
-  double x_;
-  double k_[4];
-
-public:
-  Filter(const Type type, const double tc, const double out0);
-  double in(const double i);
+  T sum;
+  int num;
 };
+}  // namespace trajectory_tracker
 
-#endif  // FILTER_H
+#endif  // TRAJECTORY_TRACKER_AVERAGE_H
