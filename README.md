@@ -1,3 +1,37 @@
+## neonavigation (kinetic) - 0.4.0-1
+
+The packages in the `neonavigation` repository were released into the `kinetic` distro by running `/usr/local/bin/bloom-release neonavigation --track kinetic --ros-distro kinetic` on `Thu, 09 May 2019 14:19:21 -0000`
+
+These packages were released:
+- `costmap_cspace`
+- `joystick_interrupt`
+- `map_organizer`
+- `neonavigation`
+- `neonavigation_common`
+- `neonavigation_launch`
+- `obj_to_pointcloud`
+- `planner_cspace`
+- `safety_limiter`
+- `track_odometry`
+- `trajectory_tracker`
+
+Version of package(s) in repository `neonavigation`:
+
+- upstream repository: https://github.com/at-wat/neonavigation.git
+- release repository: https://github.com/at-wat/neonavigation-release.git
+- rosdistro version: `0.3.1-0`
+- old version: `0.3.1-0`
+- new version: `0.4.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.8.0`
+- catkin_pkg version: `0.4.12`
+- rosdep version: `0.15.1`
+- rosdistro version: `0.7.4`
+- vcstools version: `0.1.40`
+
+
 ## neonavigation (lunar) - 0.3.1-0
 
 The packages in the `neonavigation` repository were released into the `lunar` distro by running `/usr/local/bin/bloom-release neonavigation --track lunar --ros-distro lunar` on `Thu, 10 Jan 2019 06:27:16 -0000`
