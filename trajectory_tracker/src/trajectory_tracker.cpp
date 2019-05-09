@@ -86,6 +86,7 @@ private:
   double look_forward_;
   double curv_forward_;
   double k_[3];
+  double gain_at_vel_;
   double d_lim_;
   double d_stop_;
   double vel_[2];
@@ -93,10 +94,7 @@ private:
   double acc_toc_[2];
   trajectory_tracker::VelAccLimitter v_lim_;
   trajectory_tracker::VelAccLimitter w_lim_;
-  double dec_;
   double rotate_ang_;
-  double ang_factor_;
-  double sw_dist_;
   double goal_tolerance_dist_;
   double goal_tolerance_ang_;
   double stop_tolerance_dist_;
@@ -148,7 +146,7 @@ TrackerNode::TrackerNode()
   pnh_.param("k_dist", k_[0], 1.0);
   pnh_.param("k_ang", k_[1], 1.0);
   pnh_.param("k_avel", k_[2], 1.0);
-  pnh_.param("k_dcel", dec_, 0.2);
+  pnh_.param("gain_at_vel", gain_at_vel_, 0.0);
   pnh_.param("dist_lim", d_lim_, 0.5);
   pnh_.param("dist_stop", d_stop_, 2.0);
   pnh_.param("rotate_ang", rotate_ang_, M_PI / 4);
@@ -162,8 +160,6 @@ TrackerNode::TrackerNode()
   acc_toc_[0] = acc_[0] * acc_toc_factor[0];
   acc_toc_[1] = acc_[1] * acc_toc_factor[1];
   pnh_.param("path_step", path_step_, 1);
-  pnh_.param("distance_angle_factor", ang_factor_, 0.0);
-  pnh_.param("switchback_dist", sw_dist_, 0.3);
   pnh_.param("goal_tolerance_dist", goal_tolerance_dist_, 0.2);
   pnh_.param("goal_tolerance_ang", goal_tolerance_ang_, 0.1);
   pnh_.param("stop_tolerance_dist", stop_tolerance_dist_, 0.1);
@@ -367,9 +363,9 @@ void TrackerNode::control()
       std::isnan(lpath[i_nearest].velocity_) ? vel_[0] : lpath[i_nearest].velocity_;
 
   // Remained distance to the local goal
-  float remain_local = lpath.remainedDistance(it_nearest, it_local_goal, pos_on_line);
+  float remain_local = lpath.remainedDistance(lpath.begin(), it_nearest, it_local_goal, pos_on_line);
   // Remained distance to the final goal
-  float remain = lpath.remainedDistance(it_nearest, lpath.end(), pos_on_line);
+  float remain = lpath.remainedDistance(lpath.begin(), it_nearest, lpath.end(), pos_on_line);
   if (path_length < no_pos_cntl_dist_)
     remain = remain_local = 0;
 
@@ -466,8 +462,9 @@ void TrackerNode::control()
       wref = std::copysign(1.0, wref) * vel_[1];
     }
 
+    const double k_ang = (gain_at_vel_ == 0.0) ? (k_[1]) : (k_[1] * linear_vel / gain_at_vel_);
     w_lim_.increment(
-        dt * (-dist_err_clip * k_[0] - angle * k_[1] - (w_lim_.get() - wref) * k_[2]),
+        dt * (-dist_err_clip * k_[0] - angle * k_ang - (w_lim_.get() - wref) * k_[2]),
         vel_[1], acc_[1], dt);
 
     ROS_DEBUG(
