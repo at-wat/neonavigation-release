@@ -27,16 +27,21 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <string>
 #include <vector>
+
+#include <boost/thread.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
 #include <ros/ros.h>
-#include <tf2_ros/transform_broadcaster.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
-#include <nav_msgs/Path.h>
+
 #include <geometry_msgs/Twist.h>
+#include <nav_msgs/Path.h>
+#include <rosgraph_msgs/Clock.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include <trajectory_tracker_msgs/TrajectoryTrackerStatus.h>
 #include <trajectory_tracker_msgs/PathWithVelocity.h>
@@ -223,6 +228,52 @@ TEST_F(TrajectoryTrackerTest, StraightStop)
   ASSERT_NEAR(pos_[1], 0.0, 1e-2);
 }
 
+TEST_F(TrajectoryTrackerTest, StraightStopConvergence)
+{
+  const double vels[] =
+      {
+        0.02, 0.05, 0.1, 0.2, 0.5, 1.0
+      };
+  const double path_length = 2.0;
+  for (const double vel : vels)
+  {
+    const std::string info_message = "linear vel: " + std::to_string(vel);
+
+    initState(Eigen::Vector2d(0, 0.01), 0);
+
+    std::vector<Eigen::Vector4d> poses;
+    for (double x = 0.0; x < path_length; x += 0.01)
+      poses.push_back(Eigen::Vector4d(x, 0.0, 0.0, vel));
+    poses.push_back(Eigen::Vector4d(path_length, 0.0, 0.0, vel));
+    publishPathVelocity(poses);
+
+    waitUntilStart();
+
+    ros::Rate rate(50);
+    const ros::Time start = ros::Time::now();
+    while (ros::ok())
+    {
+      ASSERT_LT(ros::Time::now() - start, ros::Duration(5.0 + path_length / vel)) << info_message;
+
+      publishTransform();
+      rate.sleep();
+      ros::spinOnce();
+      if (status_->status == trajectory_tracker_msgs::TrajectoryTrackerStatus::GOAL)
+        break;
+    }
+    for (int i = 0; i < 25; ++i)
+    {
+      publishTransform();
+      rate.sleep();
+      ros::spinOnce();
+    }
+
+    EXPECT_NEAR(yaw_, 0.0, 1e-2) << info_message;
+    EXPECT_NEAR(pos_[0], path_length, 1e-2) << info_message;
+    EXPECT_NEAR(pos_[1], 0.0, 1e-2) << info_message;
+  }
+}
+
 TEST_F(TrajectoryTrackerTest, StraightVelocityChange)
 {
   initState(Eigen::Vector2d(0, 0), 0);
@@ -247,9 +298,13 @@ TEST_F(TrajectoryTrackerTest, StraightVelocityChange)
     rate.sleep();
     ros::spinOnce();
     if (0.3 < pos_[0] && pos_[0] < 0.4)
+    {
       ASSERT_NEAR(cmd_vel_->linear.x, 0.3, 1e-2);
+    }
     else if (0.9 < pos_[0] && pos_[0] < 1.0)
+    {
       ASSERT_NEAR(cmd_vel_->linear.x, 0.5, 1e-2);
+    }
 
     if (status_->status == trajectory_tracker_msgs::TrajectoryTrackerStatus::GOAL)
       break;
@@ -345,9 +400,13 @@ TEST_F(TrajectoryTrackerTest, InPlaceTurn)
         ros::spinOnce();
 
         if (cmd_vel_)
+        {
           ASSERT_GT(cmd_vel_->angular.z * ang, -1e-2);
+        }
         if (status_)
+        {
           ASSERT_LT(status_->angle_remains * ang, 1e-2);
+        }
 
         if (status_->status == trajectory_tracker_msgs::TrajectoryTrackerStatus::GOAL)
           break;
@@ -465,10 +524,34 @@ TEST_F(TrajectoryTrackerTest, SwitchBackWithPathUpdate)
   ASSERT_NEAR(pos_[1], p[1], 1e-1);
 }
 
+void timeSource()
+{
+  ros::NodeHandle nh("/");
+  bool use_sim_time;
+  nh.param("/use_sim_time", use_sim_time, false);
+  if (!use_sim_time)
+    return;
+
+  ros::Publisher pub = nh.advertise<rosgraph_msgs::Clock>("clock", 1);
+
+  ros::WallRate rate(500.0);  // 500% speed
+  ros::WallTime time = ros::WallTime::now();
+  while (ros::ok())
+  {
+    rosgraph_msgs::Clock clock;
+    clock.clock.fromNSec(time.toNSec());
+    pub.publish(clock);
+    rate.sleep();
+    time += ros::WallDuration(0.01);
+  }
+}
+
 int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);
   ros::init(argc, argv, "test_trajectory_tracker");
+
+  boost::thread time_thread(timeSource);
 
   return RUN_ALL_TESTS();
 }
