@@ -1,3 +1,37 @@
+## neonavigation (melodic) - 0.4.0-1
+
+The packages in the `neonavigation` repository were released into the `melodic` distro by running `/usr/local/bin/bloom-release neonavigation --track melodic --ros-distro melodic` on `Thu, 09 May 2019 15:34:09 -0000`
+
+These packages were released:
+- `costmap_cspace`
+- `joystick_interrupt`
+- `map_organizer`
+- `neonavigation`
+- `neonavigation_common`
+- `neonavigation_launch`
+- `obj_to_pointcloud`
+- `planner_cspace`
+- `safety_limiter`
+- `track_odometry`
+- `trajectory_tracker`
+
+Version of package(s) in repository `neonavigation`:
+
+- upstream repository: https://github.com/at-wat/neonavigation.git
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `null`
+- new version: `0.4.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.8.0`
+- catkin_pkg version: `0.4.12`
+- rosdep version: `0.15.1`
+- rosdistro version: `0.7.4`
+- vcstools version: `0.1.40`
+
+
 ## neonavigation (lunar) - 0.4.0-1
 
 The packages in the `neonavigation` repository were released into the `lunar` distro by running `/usr/local/bin/bloom-release neonavigation --track lunar --ros-distro lunar` on `Thu, 09 May 2019 15:21:53 -0000`
