@@ -1,0 +1,62 @@
+ros-melodic-joystick-interrupt (0.4.3-1stretch) stretch; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 10 Sep 2019 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.4.2-1stretch) stretch; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 19 Aug 2019 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.4.1-1stretch) stretch; urgency=high
+
+  * Drop ROS Indigo and Ubuntu Trusty support (#310 <https://github.com/at-wat/neonavigation/issues/310>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 15 Aug 2019 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.4.0-1stretch) stretch; urgency=high
+
+  * Add LICENSE file (#270 <https://github.com/at-wat/neonavigation/issues/270>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 09 May 2019 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.3.1-1stretch) stretch; urgency=high
+
+  * Fix pointer alignment style (#233 <https://github.com/at-wat/neonavigation/issues/233>)
+  * joystick_interrupt: add test (#209 <https://github.com/at-wat/neonavigation/issues/209>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 10 Jan 2019 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.2.3-1stretch) stretch; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 19 Jul 2018 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.2.2-1stretch) stretch; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 17 Jul 2018 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.2.1-1stretch) stretch; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sat, 14 Jul 2018 00:00:00 -0000
+
+ros-melodic-joystick-interrupt (0.2.0-1stretch) stretch; urgency=high
+
+  * Fix namespace migration messages (#174 <https://github.com/at-wat/neonavigation/issues/174>)
+  * joystick_interrupt: fix topic ns and meta-package dep (#173 <https://github.com/at-wat/neonavigation/issues/173>)
+  * Subtree-merge joystick_interrupt (#172 <https://github.com/at-wat/neonavigation/issues/172>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 12 Jul 2018 00:00:00 -0000
+
+
