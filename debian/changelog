@@ -1,0 +1,93 @@
+ros-melodic-track-odometry (0.4.3-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 10 Sep 2019 00:00:00 -0000
+
+ros-melodic-track-odometry (0.4.2-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 19 Aug 2019 00:00:00 -0000
+
+ros-melodic-track-odometry (0.4.1-1bionic) bionic; urgency=high
+
+  * track_odometry: synchronize Odometry and IMU (#363 <https://github.com/at-wat/neonavigation/issues/363>)
+  * Drop ROS Indigo and Ubuntu Trusty support (#310 <https://github.com/at-wat/neonavigation/issues/310>)
+  * Fix include directory priority (#308 <https://github.com/at-wat/neonavigation/issues/308>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 15 Aug 2019 00:00:00 -0000
+
+ros-melodic-track-odometry (0.4.0-1bionic) bionic; urgency=high
+
+  * track_odometry: fix z_filter unit to seconds (#290 <https://github.com/at-wat/neonavigation/issues/290>)
+  * track_odometry: add project_posture option to tf_projection node (#286 <https://github.com/at-wat/neonavigation/issues/286>)
+  * track_odometry: refactor tf_projection (#285 <https://github.com/at-wat/neonavigation/issues/285>)
+  * track_odometry: set missing child_frame_id in tf_projection (#283 <https://github.com/at-wat/neonavigation/issues/283>)
+  * Contributors: Atsushi Watanabe, Yuta Koga
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 09 May 2019 00:00:00 -0000
+
+ros-melodic-track-odometry (0.3.1-1bionic) bionic; urgency=high
+
+  * Fix pointer alignment style (#233 <https://github.com/at-wat/neonavigation/issues/233>)
+  * Migrate tf to tf2 (#230 <https://github.com/at-wat/neonavigation/issues/230>)
+  * track_odometry: add test (#208 <https://github.com/at-wat/neonavigation/issues/208>)
+  * Fix catkin package definitions (#206 <https://github.com/at-wat/neonavigation/issues/206>)
+  * Contributors: Atsushi Watanabe, So Jomura
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 10 Jan 2019 00:00:00 -0000
+
+ros-melodic-track-odometry (0.2.3-1bionic) bionic; urgency=high
+
+  * Fix test names (#202 <https://github.com/at-wat/neonavigation/issues/202>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 19 Jul 2018 00:00:00 -0000
+
+ros-melodic-track-odometry (0.2.2-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 17 Jul 2018 00:00:00 -0000
+
+ros-melodic-track-odometry (0.2.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sat, 14 Jul 2018 00:00:00 -0000
+
+ros-melodic-track-odometry (0.2.0-1bionic) bionic; urgency=high
+
+  * Fix build on Indigo (#180 <https://github.com/at-wat/neonavigation/issues/180>)
+  * Fix namespace migration messages (#174 <https://github.com/at-wat/neonavigation/issues/174>)
+  * Fix topic/service namespace model (#168 <https://github.com/at-wat/neonavigation/issues/168>)
+  * Fix package dependencies (#167 <https://github.com/at-wat/neonavigation/issues/167>)
+  * Update package descriptions and unify license and version (#165 <https://github.com/at-wat/neonavigation/issues/165>)
+  * Use neonavigation_msgs package (#164 <https://github.com/at-wat/neonavigation/issues/164>)
+  * track_odometry: use timer instead of spinOnce (#122 <https://github.com/at-wat/neonavigation/issues/122>)
+  * track_odometry: fix eigen include dir (#115 <https://github.com/at-wat/neonavigation/issues/115>)
+  * track_odometry: use position diff instead of twist.linear (#113 <https://github.com/at-wat/neonavigation/issues/113>)
+  * track_odometry: overwrite odometry child_frame_id (#112 <https://github.com/at-wat/neonavigation/issues/112>)
+  * track_odometry: fix naming style. (#91 <https://github.com/at-wat/neonavigation/issues/91>)
+  * track_odometry: add publish_tf option. (#78 <https://github.com/at-wat/neonavigation/issues/78>)
+  * Remove dummy dep to system_lib. (#51 <https://github.com/at-wat/neonavigation/issues/51>)
+  * Support package install. (#45 <https://github.com/at-wat/neonavigation/issues/45>)
+  * Fix coding styles. (#39 <https://github.com/at-wat/neonavigation/issues/39>)
+  * track_odometry: adds an option to use without odometry input (#30 <https://github.com/at-wat/neonavigation/issues/30>)
+  * track_odometry: tf_projection: adds parameter to add tf timestamp offset (#21 <https://github.com/at-wat/neonavigation/issues/21>)
+  * track_odometry: tf_projection: adds option to eliminate roll/pitch (#20 <https://github.com/at-wat/neonavigation/issues/20>)
+  * track_odometry: refactors tf_projection test code (#19 <https://github.com/at-wat/neonavigation/issues/19>)
+  * track_odometry: removes projected tf output and add tf_projection node (#17 <https://github.com/at-wat/neonavigation/issues/17>)
+  * adds READMEs (#11 <https://github.com/at-wat/neonavigation/issues/11>)
+  * track_odometry: suppresses warnings until receiving first message
+  * track_odometry: implements kalman filter (#9 <https://github.com/at-wat/neonavigation/issues/9>)
+  * track_odometry: fixes delta time and buffering
+  * track_odometry: uses latest transform between imu and base_link
+  * Subtree-merge 'track_odometry' package
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 12 Jul 2018 00:00:00 -0000
+
+
