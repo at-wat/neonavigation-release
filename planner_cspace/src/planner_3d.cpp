@@ -42,6 +42,7 @@
 #include <geometry_msgs/PoseArray.h>
 #include <nav_msgs/GetPlan.h>
 #include <nav_msgs/Path.h>
+#include <nav_msgs/OccupancyGrid.h>
 #include <planner_cspace_msgs/PlannerStatus.h>
 #include <sensor_msgs/PointCloud.h>
 #include <std_srvs/Empty.h>
@@ -60,6 +61,7 @@
 
 #include <planner_cspace/bbf.h>
 #include <planner_cspace/grid_astar.h>
+#include <planner_cspace/planner_3d/costmap_bbf.h>
 #include <planner_cspace/planner_3d/grid_metric_converter.h>
 #include <planner_cspace/planner_3d/jump_detector.h>
 #include <planner_cspace/planner_3d/motion_cache.h>
@@ -68,6 +70,10 @@
 
 #include <omp.h>
 
+namespace planner_cspace
+{
+namespace planner_3d
+{
 class Planner3dNode
 {
 public:
@@ -84,8 +90,9 @@ protected:
   ros::Publisher pub_path_;
   ros::Publisher pub_path_velocity_;
   ros::Publisher pub_path_poses_;
-  ros::Publisher pub_debug_;
-  ros::Publisher pub_hist_;
+  ros::Publisher pub_hysteresis_map_;
+  ros::Publisher pub_distance_map_;
+  ros::Publisher pub_remembered_map_;
   ros::Publisher pub_start_;
   ros::Publisher pub_end_;
   ros::Publisher pub_status_;
@@ -98,13 +105,13 @@ protected:
 
   Astar as_;
   Astar::Gridmap<char, 0x40> cm_;
-  Astar::Gridmap<bbf::BinaryBayesFilter, 0x20> cm_hist_bbf_;
-  Astar::Gridmap<char, 0x40> cm_hist_;
   Astar::Gridmap<char, 0x80> cm_rough_;
   Astar::Gridmap<char, 0x40> cm_base_;
   Astar::Gridmap<char, 0x80> cm_rough_base_;
   Astar::Gridmap<char, 0x80> cm_hyst_;
+  Astar::Gridmap<char, 0x80> cm_updates_;
   Astar::Gridmap<float> cost_estim_cache_;
+  CostmapBBF bbf_costmap_;
 
   std::array<float, 1024> euclid_cost_lin_cache_;
 
@@ -163,6 +170,7 @@ protected:
   bool has_map_;
   bool has_goal_;
   bool has_start_;
+  bool has_hysteresis_map_;
   bool goal_updated_;
   bool remember_updates_;
   bool fast_map_update_;
@@ -216,13 +224,6 @@ protected:
   int goal_tolerance_ang_;
   float angle_resolution_aspect_;
 
-  enum DebugMode
-  {
-    DEBUG_HYSTERESIS,
-    DEBUG_COST_ESTIM
-  };
-  DebugMode debug_out_;
-
   planner_cspace_msgs::PlannerStatus status_;
 
   bool find_best_;
@@ -251,7 +252,7 @@ protected:
   {
     ROS_WARN("Forgetting remembered costmap.");
     if (has_map_)
-      cm_hist_bbf_.clear(bbf::BinaryBayesFilter(bbf::MIN_ODDS));
+      bbf_costmap_.clear();
 
     return true;
   }
@@ -550,7 +551,7 @@ protected:
                   break;
                 }
                 sum += c;
-                sum_hist += cm_hist_[pos];
+                sum_hist += bbf_costmap_.getCost(pos);
               }
               if (collision)
                 continue;
@@ -723,25 +724,25 @@ protected:
     cost_estim_cache_[e] = 0;
 
     if (goal_changed)
+    {
       cm_hyst_.clear(100);
+      has_hysteresis_map_ = false;
+    }
 
-    publishCostmap();
+    publishDebug();
 
     goal_updated_ = true;
 
     return true;
   }
-  void publishCostmap()
+  void publishDebug()
   {
-    if (pub_debug_.getNumSubscribers() == 0)
-      return;
-
-    sensor_msgs::PointCloud debug;
-    debug.header = map_header_;
-    debug.header.stamp = ros::Time::now();
+    if (pub_distance_map_.getNumSubscribers() > 0)
     {
-      Astar::Vec p;
-      for (p[1] = 0; p[1] < cost_estim_cache_.size()[1]; p[1]++)
+      sensor_msgs::PointCloud distance_map;
+      distance_map.header = map_header_;
+      distance_map.header.stamp = ros::Time::now();
+      for (Astar::Vec p(0, 0, 0); p[1] < cost_estim_cache_.size()[1]; p[1]++)
       {
         for (p[0] = 0; p[0] < cost_estim_cache_.size()[0]; p[0]++)
         {
@@ -751,29 +752,63 @@ protected:
           geometry_msgs::Point32 point;
           point.x = x;
           point.y = y;
-          switch (debug_out_)
-          {
-            case DEBUG_HYSTERESIS:
-              if (cost_estim_cache_[p] == FLT_MAX)
-                continue;
-
-              point.z = 100;
-              for (p[2] = 0; p[2] < static_cast<int>(map_info_.angle); ++p[2])
-                point.z = std::min(static_cast<float>(cm_hyst_[p]), point.z);
-
-              point.z *= 0.01;
-              break;
-            case DEBUG_COST_ESTIM:
-              if (cost_estim_cache_[p] == FLT_MAX)
-                continue;
-              point.z = cost_estim_cache_[p] / 500;
-              break;
-          }
-          debug.points.push_back(point);
+          if (cost_estim_cache_[p] == FLT_MAX)
+            continue;
+          point.z = cost_estim_cache_[p] / 500;
+          distance_map.points.push_back(point);
         }
       }
+      pub_distance_map_.publish(distance_map);
     }
-    pub_debug_.publish(debug);
+
+    if (pub_hysteresis_map_.getNumSubscribers() > 0)
+    {
+      nav_msgs::OccupancyGrid hysteresis_map;
+      hysteresis_map.header.frame_id = map_header_.frame_id;
+      hysteresis_map.info.resolution = map_info_.linear_resolution;
+      hysteresis_map.info.width = map_info_.width;
+      hysteresis_map.info.height = map_info_.height;
+      hysteresis_map.info.origin = map_info_.origin;
+      hysteresis_map.data.resize(map_info_.width * map_info_.height, 100);
+
+      for (Astar::Vec p(0, 0, 0); p[1] < cost_estim_cache_.size()[1]; p[1]++)
+      {
+        for (p[0] = 0; p[0] < cost_estim_cache_.size()[0]; p[0]++)
+        {
+          if (cost_estim_cache_[p] == FLT_MAX)
+            continue;
+
+          char cost = 100;
+          for (Astar::Vec p2 = p; p2[2] < static_cast<int>(map_info_.angle); ++p2[2])
+          {
+            cost = std::min(cm_hyst_[p2], cost);
+          }
+          hysteresis_map.data[p[0] + p[1] * map_info_.width] = cost;
+        }
+      }
+      pub_hysteresis_map_.publish(hysteresis_map);
+    }
+  }
+  void publishRememberedMap()
+  {
+    if (pub_remembered_map_.getNumSubscribers() > 0 && remember_updates_)
+    {
+      nav_msgs::OccupancyGrid remembered_map;
+      remembered_map.header.frame_id = map_header_.frame_id;
+      remembered_map.info.resolution = map_info_.linear_resolution;
+      remembered_map.info.width = map_info_.width;
+      remembered_map.info.height = map_info_.height;
+      remembered_map.info.origin = map_info_.origin;
+      remembered_map.data.resize(map_info_.width * map_info_.height);
+
+      const auto generate_pointcloud = [this, &remembered_map](const Astar::Vec& p, bbf::BinaryBayesFilter& bbf)
+      {
+        remembered_map.data[p[0] + p[1] * map_info_.width] =
+            (bbf.getProbability() - bbf::MIN_PROBABILITY) * 100 / (bbf::MAX_PROBABILITY - bbf::MIN_PROBABILITY);
+      };
+      bbf_costmap_.forEach(generate_pointcloud);
+      pub_remembered_map_.publish(remembered_map);
+    }
   }
   void publishEmptyPath()
   {
@@ -803,55 +838,15 @@ protected:
 
     cm_ = cm_base_;
     cm_rough_ = cm_rough_base_;
-    if (remember_updates_)
-    {
-      if (pub_hist_.getNumSubscribers() > 0)
-      {
-        sensor_msgs::PointCloud pc;
-        pc.header = map_header_;
-        pc.header.stamp = now;
-        Astar::Vec p(0, 0, 0);
-        for (p[1] = 0; p[1] < cm_hist_bbf_.size()[1]; p[1]++)
-        {
-          for (p[0] = 0; p[0] < cm_hist_bbf_.size()[0]; p[0]++)
-          {
-            if (cm_hist_bbf_[p].get() > bbf::probabilityToOdds(0.1))
-            {
-              float x, y, yaw;
-              grid_metric_converter::grid2Metric(map_info_, p[0], p[1], p[2], x, y, yaw);
-              geometry_msgs::Point32 point;
-              point.x = x;
-              point.y = y;
-              point.z = cm_hist_bbf_[p].getProbability();
-              pc.points.push_back(point);
-            }
-          }
-        }
-        pub_hist_.publish(pc);
-      }
-      Astar::Vec p;
-      cm_hist_.clear(0);
-      for (p[1] = 0; p[1] < cm_hist_bbf_.size()[1]; p[1]++)
-      {
-        for (p[0] = 0; p[0] < cm_hist_bbf_.size()[0]; p[0]++)
-        {
-          p[2] = 0;
-          cm_hist_[p] = lroundf(cm_hist_bbf_[p].getNormalizedProbability() * 100.0);
-        }
-      }
-    }
+    cm_updates_.clear(-1);
+
+    bool clear_hysteresis(false);
 
     {
-      const Astar::Vec center(
-          static_cast<int>(msg->width / 2), static_cast<int>(msg->height / 2), 0);
       const Astar::Vec gp(
           static_cast<int>(msg->x), static_cast<int>(msg->y), static_cast<int>(msg->yaw));
       const Astar::Vec gp_rough(gp[0], gp[1], 0);
-      const int hist_ignore_range_sq = hist_ignore_range_ * hist_ignore_range_;
-      const int hist_ignore_range_max_sq =
-          hist_ignore_range_max_ * hist_ignore_range_max_;
-      Astar::Vec p;
-      for (p[0] = 0; p[0] < static_cast<int>(msg->width); p[0]++)
+      for (Astar::Vec p(0, 0, 0); p[0] < static_cast<int>(msg->width); p[0]++)
       {
         for (p[1] = 0; p[1] < static_cast<int>(msg->height); p[1]++)
         {
@@ -862,34 +857,13 @@ protected:
             const char c = msg->data[addr];
             if (c < cost_min)
               cost_min = c;
+            if (c == 100 && !clear_hysteresis && cm_hyst_[gp + p] == 0)
+              clear_hysteresis = true;
           }
           p[2] = 0;
+          cm_updates_[gp_rough + p] = cost_min;
           if (cost_min > cm_rough_[gp_rough + p])
-          {
             cm_rough_[gp_rough + p] = cost_min;
-          }
-
-          Astar::Vec pos = gp + p;
-          pos[2] = 0;
-          if (cost_min == 100)
-          {
-            const Astar::Vec p2 = p - center;
-            const float sqlen = p2.sqlen();
-            if (sqlen > hist_ignore_range_sq &&
-                sqlen < hist_ignore_range_max_sq)
-            {
-              cm_hist_bbf_[pos].update(remember_hit_odds_);
-            }
-          }
-          else if (cost_min >= 0)
-          {
-            const Astar::Vec p2 = p - center;
-            const float sqlen = p2.sqlen();
-            if (sqlen < hist_ignore_range_max_sq)
-            {
-              cm_hist_bbf_[pos].update(remember_miss_odds_);
-            }
-          }
 
           for (p[2] = 0; p[2] < static_cast<int>(msg->angle); p[2]++)
           {
@@ -909,7 +883,34 @@ protected:
         }
       }
     }
-    if (!has_goal_ || !has_start_)
+
+    if (clear_hysteresis && has_hysteresis_map_)
+    {
+      ROS_INFO("The previous path collides to the obstacle. Clearing hysteresis map.");
+      cm_hyst_.clear(100);
+      has_hysteresis_map_ = false;
+    }
+
+    if (!has_start_)
+      return;
+
+    Astar::Vec s;
+    grid_metric_converter::metric2Grid(
+        map_info_, s[0], s[1], s[2],
+        start_.pose.position.x, start_.pose.position.y,
+        tf2::getYaw(start_.pose.orientation));
+    s.cycleUnsigned(map_info_.angle);
+
+    if (remember_updates_)
+    {
+      bbf_costmap_.remember(
+          &cm_updates_, s,
+          remember_hit_odds_, remember_miss_odds_,
+          hist_ignore_range_, hist_ignore_range_max_);
+      publishRememberedMap();
+      bbf_costmap_.updateCostmap();
+    }
+    if (!has_goal_)
       return;
 
     if (!fast_map_update_)
@@ -918,12 +919,7 @@ protected:
       return;
     }
 
-    Astar::Vec s, e;
-    grid_metric_converter::metric2Grid(
-        map_info_, s[0], s[1], s[2],
-        start_.pose.position.x, start_.pose.position.y,
-        tf2::getYaw(start_.pose.orientation));
-    s.cycleUnsigned(map_info_.angle);
+    Astar::Vec e;
     grid_metric_converter::metric2Grid(
         map_info_, e[0], e[1], e[2],
         goal_.pose.position.x, goal_.pose.position.y,
@@ -1023,7 +1019,7 @@ protected:
     const auto tnow = boost::chrono::high_resolution_clock::now();
     ROS_DEBUG("Cost estimation cache updated (%0.4f sec.)",
               boost::chrono::duration<float>(tnow - ts).count());
-    publishCostmap();
+    publishDebug();
   }
   void cbMap(const costmap_cspace_msgs::CSpace3D::ConstPtr& msg)
   {
@@ -1131,8 +1127,8 @@ protected:
 
     cost_estim_cache_.reset(Astar::Vec(size[0], size[1], 1));
     cm_rough_.reset(Astar::Vec(size[0], size[1], 1));
-    cm_hist_.reset(Astar::Vec(size[0], size[1], 1));
-    cm_hist_bbf_.reset(Astar::Vec(size[0], size[1], 1));
+    cm_updates_.reset(Astar::Vec(size[0], size[1], 1));
+    bbf_costmap_.reset(Astar::Vec(size[0], size[1], 1));
 
     Astar::Vec p;
     for (p[0] = 0; p[0] < static_cast<int>(map_info_.width); p[0]++)
@@ -1155,14 +1151,15 @@ protected:
       }
     }
     ROS_DEBUG("Map copied");
+
     cm_hyst_.clear(100);
+    has_hysteresis_map_ = false;
 
     has_map_ = true;
 
     cm_rough_base_ = cm_rough_;
     cm_base_ = cm_;
-    cm_hist_bbf_.clear(bbf::BinaryBayesFilter(bbf::MIN_ODDS));
-    cm_hist_.clear(0);
+    bbf_costmap_.clear();
 
     // Make boundary check threshold
     min_boundary_ = motion_cache_.getMaxRange();
@@ -1222,8 +1219,6 @@ public:
     sub_goal_ = neonavigation_common::compat::subscribe(
         nh_, "move_base_simple/goal",
         pnh_, "goal", 1, &Planner3dNode::cbGoal, this);
-    pub_debug_ = pnh_.advertise<sensor_msgs::PointCloud>("debug", 1, true);
-    pub_hist_ = pnh_.advertise<sensor_msgs::PointCloud>("remembered", 1, true);
     pub_start_ = pnh_.advertise<geometry_msgs::PoseStamped>("path_start", 1, true);
     pub_end_ = pnh_.advertise<geometry_msgs::PoseStamped>("path_end", 1, true);
     pub_status_ = pnh_.advertise<planner_cspace_msgs::PlannerStatus>("status", 1, true);
@@ -1231,6 +1226,11 @@ public:
         nh_, "forget_planning_cost",
         pnh_, "forget", &Planner3dNode::cbForget, this);
     srs_make_plan_ = pnh_.advertiseService("make_plan", &Planner3dNode::cbMakePlan, this);
+
+    // Debug outputs
+    pub_distance_map_ = pnh_.advertise<sensor_msgs::PointCloud>("distance_map", 1, true);
+    pub_hysteresis_map_ = pnh_.advertise<nav_msgs::OccupancyGrid>("hysteresis_map", 1, true);
+    pub_remembered_map_ = pnh_.advertise<nav_msgs::OccupancyGrid>("remembered_map", 1, true);
 
     act_.reset(new Planner3DActionServer(ros::NodeHandle(), "move_base", false));
     act_->registerGoalCallback(boost::bind(&Planner3dNode::cbAction, this));
@@ -1319,12 +1319,12 @@ public:
     {
       ROS_WARN("planner_3d: Experimental fast_map_update is enabled. ");
     }
-    std::string debug_mode;
-    pnh_.param("debug_mode", debug_mode, std::string("cost_estim"));
-    if (debug_mode == "hyst")
-      debug_out_ = DEBUG_HYSTERESIS;
-    else if (debug_mode == "cost_estim")
-      debug_out_ = DEBUG_COST_ESTIM;
+    if (pnh_.hasParam("debug_mode"))
+    {
+      ROS_ERROR(
+          "planner_3d: ~/debug_mode parameter and ~/debug topic are deprecated. "
+          "Use ~/distance_map, ~/hysteresis_map, and ~/remembered_map topics instead.");
+    }
 
     bool print_planning_duration;
     pnh_.param("print_planning_duration", print_planning_duration, false);
@@ -1382,10 +1382,9 @@ public:
       if (has_map_)
       {
         updateStart();
+
         if (jump_.detectJump())
-        {
-          cm_hist_bbf_.clear(bbf::BinaryBayesFilter(bbf::MIN_ODDS));
-        }
+          bbf_costmap_.clear();
 
         if (!goal_updated_ && has_goal_)
           updateGoal();
@@ -1706,9 +1705,6 @@ protected:
 
     if (hyst)
     {
-      const std::list<Astar::Vecf> path_interpolated =
-          path_interpolator_.interpolate(path_grid, 0.5, local_range_);
-
       std::unordered_map<Astar::Vec, bool, Astar::Vec> path_points;
       const float max_dist = cc_.hysteresis_max_dist_ / map_info_.linear_resolution;
       const float expand_dist = cc_.hysteresis_expand_ / map_info_.linear_resolution;
@@ -1736,25 +1732,35 @@ protected:
       {
         const Astar::Vec& p = ps.first;
         float d_min = FLT_MAX;
-        auto it_prev = path_interpolated.begin();
-        for (auto it = path_interpolated.begin(); it != path_interpolated.end(); it++)
+        auto it_prev = path_interpolated.cbegin();
+        for (auto it = path_interpolated.cbegin(); it != path_interpolated.cend(); it++)
         {
           if (it != it_prev)
           {
-            const float d =
-                CyclicVecFloat<3, 2>(p).distLinestrip2d(*it_prev, *it);
-            if (d < d_min)
-              d_min = d;
+            int yaw = lroundf((*it)[2]) % map_info_.angle;
+            int yaw_prev = lroundf((*it_prev)[2]) % map_info_.angle;
+            if (yaw < 0)
+              yaw += map_info_.angle;
+            if (yaw_prev < 0)
+              yaw_prev += map_info_.angle;
+            if (yaw == p[2] || yaw_prev == p[2])
+            {
+              const float d =
+                  CyclicVecFloat<3, 2>(p).distLinestrip2d(*it_prev, *it);
+              if (d < d_min)
+                d_min = d;
+            }
           }
           it_prev = it;
         }
         d_min = std::max(expand_dist, std::min(expand_dist + max_dist, d_min));
         cm_hyst_[p] = lroundf((d_min - expand_dist) * 100.0 / max_dist);
       }
+      has_hysteresis_map_ = true;
       const auto tnow = boost::chrono::high_resolution_clock::now();
       ROS_DEBUG("Hysteresis map generated (%0.4f sec.)",
                 boost::chrono::duration<float>(tnow - ts).count());
-      publishCostmap();
+      publishDebug();
     }
 
     return true;
@@ -1926,7 +1932,7 @@ protected:
           return -1;
         sum += c;
 
-        if (hyst)
+        if (hyst && has_hysteresis_map_)
           sum_hyst += cm_hyst_[pos];
       }
       const float distf = cache_page->second.getDistance();
@@ -1988,7 +1994,7 @@ protected:
             return -1;
           sum += c;
 
-          if (hyst)
+          if (hyst && has_hysteresis_map_)
             sum_hyst += cm_hyst_[pos];
         }
         const float distf = cache_page->second.getDistance();
@@ -2028,13 +2034,15 @@ protected:
     stat.addf("error", "%u", status_.error);
   }
 };
+}  // namespace planner_3d
+}  // namespace planner_cspace
 
 int main(int argc, char* argv[])
 {
   ros::init(argc, argv, "planner_3d");
 
-  Planner3dNode jy;
-  jy.spin();
+  planner_cspace::planner_3d::Planner3dNode node;
+  node.spin();
 
   return 0;
 }
