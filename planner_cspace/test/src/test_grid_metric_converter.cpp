@@ -27,16 +27,20 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+#include <vector>
+
 #include <costmap_cspace_msgs/MapMetaData3D.h>
 #include <planner_cspace/planner_3d/grid_metric_converter.h>
 #include <tf2/utils.h>
 
 #include <gtest/gtest.h>
 
-#define _USE_MATH_DEFINES
-#include <cmath>
-#include <vector>
-
+namespace planner_cspace
+{
+namespace planner_3d
+{
 TEST(GridMetricConverter, SinglePose)
 {
   costmap_cspace_msgs::MapMetaData3D map_info;
@@ -119,10 +123,10 @@ TEST(GridMetricConverter, Path)
   size_t ref = 0;
   for (const geometry_msgs::PoseStamped& p : path.poses)
   {
-    const double diff_dist = hypotf(
+    const double diff_dist = std::hypot(
         metric_expected[ref][0] - p.pose.position.x,
         metric_expected[ref][1] - p.pose.position.y);
-    double diff_yaw = fabs(tf2::getYaw(p.pose.orientation) - metric_expected[ref][2]);
+    double diff_yaw = std::abs(tf2::getYaw(p.pose.orientation) - metric_expected[ref][2]);
 
     if (diff_yaw < -M_PI)
       diff_yaw += 2.0 * M_PI;
@@ -130,10 +134,10 @@ TEST(GridMetricConverter, Path)
       diff_yaw -= 2.0 * M_PI;
 
     ASSERT_LT(diff_dist, map_info.linear_resolution * 2);
-    ASSERT_LT(fabs(diff_yaw), map_info.angular_resolution * 2);
+    ASSERT_LT(std::abs(diff_yaw), map_info.angular_resolution * 2);
 
     if (diff_dist < map_info.linear_resolution / 2 &&
-        fabs(diff_yaw) < map_info.angular_resolution / 2)
+        std::abs(diff_yaw) < map_info.angular_resolution / 2)
     {
       ++ref;
       if (ref == sizeof(metric_expected) / sizeof(metric_expected[0]))
@@ -143,6 +147,8 @@ TEST(GridMetricConverter, Path)
   // some reference points are not met
   ASSERT_TRUE(false);
 }
+}  // namespace planner_3d
+}  // namespace planner_cspace
 
 int main(int argc, char** argv)
 {
