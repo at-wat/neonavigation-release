@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2017, the neonavigation authors
+ * Copyright (c) 2014-2020, the neonavigation authors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -10,8 +10,8 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the copyright holder nor the names of its 
- *       contributors may be used to endorse or promote products derived from 
+ *     * Neither the name of the copyright holder nor the names of its
+ *       contributors may be used to endorse or promote products derived from
  *       this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
@@ -27,50 +27,43 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef KALMAN_FILTER1_H
-#define KALMAN_FILTER1_H
+#ifndef PLANNER_CSPACE_GRID_ASTAR_MODEL_H
+#define PLANNER_CSPACE_GRID_ASTAR_MODEL_H
 
-#include <limits>
+#include <memory>
+#include <vector>
 
-class KalmanFilter1
+#include <planner_cspace/cyclic_vec.h>
+
+namespace planner_cspace
+{
+template <int DIM = 3, int NONCYCLIC = 2>
+class GridAstarModelBase
 {
 public:
-  float x_;
-  float sigma_;
+  using Ptr = typename std::shared_ptr<GridAstarModelBase<DIM, NONCYCLIC>>;
+  using Vec = CyclicVecInt<DIM, NONCYCLIC>;
+  using Vecf = CyclicVecFloat<DIM, NONCYCLIC>;
 
-  void set(const float x0 = 0.0,
-           const float sigma0 = std::numeric_limits<float>::infinity())
+  class VecWithCost
   {
-    x_ = x0;
-    sigma_ = sigma0;
-  }
-  KalmanFilter1(const float x0 = 0.0,
-                const float sigma0 = std::numeric_limits<float>::infinity())
-  {
-    set(x0, sigma0);
-  }
-  void predict(const float x_plus, const float sigma_plus)
-  {
-    x_ += x_plus;
-    sigma_ += sigma_plus;
-  }
-  void measure(const float x_in, const float sigma_in)
-  {
-    if (std::isinf(sigma_in))
-      return;
-    if (std::isinf(sigma_))
+  public:
+    Vec v_;
+    float c_;
+    explicit VecWithCost(const Vec& v, const float c = 0.0)
+      : v_(v)
+      , c_(c)
     {
-      if (std::isinf(x_in))
-        x_ = 0;
-      else
-        x_ = x_in;
-      sigma_ = sigma_in;
-      return;
     }
-    float kt = sigma_ * sigma_ / (sigma_ * sigma_ + sigma_in * sigma_in);
-    x_ = x_ + kt * (x_in - x_);
-    sigma_ = (1.0 - kt) * sigma_;
-  }
-};
+  };
 
-#endif  // KALMAN_FILTER1_H
+  virtual float cost(
+      const Vec& cur, const Vec& next, const std::vector<VecWithCost>& start, const Vec& goal) const = 0;
+  virtual float costEstim(
+      const Vec& cur, const Vec& next) const = 0;
+  virtual const std::vector<Vec>& searchGrids(
+      const Vec& cur, const std::vector<VecWithCost>& start, const Vec& goal) const = 0;
+};
+}  // namespace planner_cspace
+
+#endif  // PLANNER_CSPACE_GRID_ASTAR_MODEL_H

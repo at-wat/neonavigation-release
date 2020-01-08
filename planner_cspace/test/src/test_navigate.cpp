@@ -27,7 +27,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cmath>
+#include <cstddef>
+
 #include <ros/ros.h>
+
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
@@ -35,8 +39,7 @@
 #include <nav_msgs/Path.h>
 #include <nav_msgs/GetPlan.h>
 #include <nav_msgs/OccupancyGrid.h>
-
-#include <cstddef>
+#include <costmap_cspace_msgs/CSpace3D.h>
 
 #include <gtest/gtest.h>
 
@@ -48,8 +51,10 @@ protected:
   tf2_ros::TransformListener tfl_;
   nav_msgs::OccupancyGrid::ConstPtr map_;
   nav_msgs::OccupancyGrid::ConstPtr map_local_;
+  costmap_cspace_msgs::CSpace3D::ConstPtr costmap_;
   ros::Subscriber sub_map_;
   ros::Subscriber sub_map_local_;
+  ros::Subscriber sub_costmap_;
   ros::ServiceClient srv_forget_;
   ros::Publisher pub_map_;
   ros::Publisher pub_map_local_;
@@ -60,6 +65,7 @@ protected:
   {
     sub_map_ = nh_.subscribe("map_global", 1, &Navigate::cbMap, this);
     sub_map_local_ = nh_.subscribe("map_local", 1, &Navigate::cbMapLocal, this);
+    sub_costmap_ = nh_.subscribe("costmap", 1, &Navigate::cbCostmap, this);
     srv_forget_ =
         nh_.serviceClient<std_srvs::EmptyRequest, std_srvs::EmptyResponse>(
             "forget_planning_cost");
@@ -89,9 +95,20 @@ protected:
     pub_map_.publish(map_);
     std::cerr << "Map applied." << std::endl;
 
+    while (ros::ok() && !costmap_)
+    {
+      ros::spinOnce();
+      rate.sleep();
+    }
+
     std_srvs::EmptyRequest req;
     std_srvs::EmptyResponse res;
     srv_forget_.call(req, res);
+  }
+  void cbCostmap(const costmap_cspace_msgs::CSpace3D::ConstPtr& msg)
+  {
+    costmap_ = msg;
+    std::cerr << "Costmap received." << std::endl;
   }
   void cbMap(const nav_msgs::OccupancyGrid::ConstPtr& msg)
   {
@@ -158,7 +175,7 @@ TEST_F(Navigate, Navigate)
 
     auto goal_rel = trans.inverse() * goal;
     if (goal_rel.getOrigin().length() < 0.2 &&
-        fabs(tf2::getYaw(goal_rel.getRotation())) < 0.2)
+        std::abs(tf2::getYaw(goal_rel.getRotation())) < 0.2)
     {
       std::cerr << "Navagation success." << std::endl;
       ros::Duration(2.0).sleep();
@@ -230,7 +247,7 @@ TEST_F(Navigate, NavigateWithLocalMap)
 
     auto goal_rel = trans.inverse() * goal;
     if (goal_rel.getOrigin().length() < 0.2 &&
-        fabs(tf2::getYaw(goal_rel.getRotation())) < 0.2)
+        std::abs(tf2::getYaw(goal_rel.getRotation())) < 0.2)
     {
       std::cerr << "Navagation success." << std::endl;
       ros::Duration(2.0).sleep();
