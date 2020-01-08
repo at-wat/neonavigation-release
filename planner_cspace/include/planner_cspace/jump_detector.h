@@ -27,8 +27,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PLANNER_CSPACE_PLANNER_3D_JUMP_DETECTOR_H
-#define PLANNER_CSPACE_PLANNER_3D_JUMP_DETECTOR_H
+#ifndef PLANNER_CSPACE_JUMP_DETECTOR_H
+#define PLANNER_CSPACE_JUMP_DETECTOR_H
+
+#include <cmath>
+#include <string>
 
 #include <ros/ros.h>
 
@@ -36,8 +39,10 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
 
-#include <string>
-
+namespace planner_cspace
+{
+namespace planner_3d
+{
 class JumpDetector
 {
 protected:
@@ -107,7 +112,7 @@ public:
     const auto pos_diff = diff.getOrigin().length();
     const auto yaw_diff = tf2::getYaw(diff.getRotation());
 
-    if (pos_diff > pos_jump_ || fabs(yaw_diff) > yaw_jump_)
+    if (pos_diff > pos_jump_ || std::abs(yaw_diff) > yaw_jump_)
     {
       ROS_ERROR("Position jumped (%0.3f/%0.3f, %0.3f/%0.3f); clearing history",
                 pos_diff, pos_jump_, yaw_diff, yaw_jump_);
@@ -116,5 +121,7 @@ public:
     return false;
   }
 };
+}  // namespace planner_3d
+}  // namespace planner_cspace
 
-#endif  // PLANNER_CSPACE_PLANNER_3D_JUMP_DETECTOR_H
+#endif  // PLANNER_CSPACE_JUMP_DETECTOR_H
