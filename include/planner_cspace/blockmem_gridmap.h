@@ -35,6 +35,8 @@
 
 #include <planner_cspace/cyclic_vec.h>
 
+namespace planner_cspace
+{
 template <class T, int DIM, int NONCYCLIC>
 class BlockMemGridmapBase
 {
@@ -45,6 +47,7 @@ public:
   virtual void reset(const CyclicVecInt<DIM, NONCYCLIC>& size) = 0;
   virtual T& operator[](const CyclicVecInt<DIM, NONCYCLIC>& pos) = 0;
   virtual const T operator[](const CyclicVecInt<DIM, NONCYCLIC>& pos) const = 0;
+  virtual std::function<void(CyclicVecInt<DIM, NONCYCLIC>, size_t&, size_t&)> getAddressor() const = 0;
 };
 
 template <class T, int DIM, int NONCYCLIC, int BLOCK_WIDTH = 0x20, bool ENABLE_VALIDATION = false>
@@ -214,5 +217,6 @@ public:
     return *this;
   }
 };
+}  // namespace planner_cspace
 
 #endif  // PLANNER_CSPACE_BLOCKMEM_GRIDMAP_H

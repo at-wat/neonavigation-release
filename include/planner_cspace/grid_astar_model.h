@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019, the neonavigation authors
+ * Copyright (c) 2014-2020, the neonavigation authors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,80 +27,43 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PLANNER_CSPACE_PLANNER_3D_MOTION_CACHE_H
-#define PLANNER_CSPACE_PLANNER_3D_MOTION_CACHE_H
+#ifndef PLANNER_CSPACE_GRID_ASTAR_MODEL_H
+#define PLANNER_CSPACE_GRID_ASTAR_MODEL_H
 
-#include <unordered_map>
+#include <memory>
 #include <vector>
 
 #include <planner_cspace/cyclic_vec.h>
 
 namespace planner_cspace
 {
-namespace planner_3d
-{
-class MotionCache
+template <int DIM = 3, int NONCYCLIC = 2>
+class GridAstarModelBase
 {
 public:
-  class Page
+  using Ptr = typename std::shared_ptr<GridAstarModelBase<DIM, NONCYCLIC>>;
+  using Vec = CyclicVecInt<DIM, NONCYCLIC>;
+  using Vecf = CyclicVecFloat<DIM, NONCYCLIC>;
+
+  class VecWithCost
   {
-  protected:
-    friend class MotionCache;
-
-    std::vector<CyclicVecInt<3, 2>> motion_;
-    float distance_;
-
   public:
-    inline float getDistance() const
+    Vec v_;
+    float c_;
+    explicit VecWithCost(const Vec& v, const float c = 0.0)
+      : v_(v)
+      , c_(c)
     {
-      return distance_;
-    }
-    const std::vector<CyclicVecInt<3, 2>>& getMotion() const
-    {
-      return motion_;
     }
   };
 
-  using Cache =
-      std::unordered_map<CyclicVecInt<3, 2>, Page, CyclicVecInt<3, 2>>;
-
-  using Ptr = std::shared_ptr<MotionCache>;
-
-  inline const typename Cache::const_iterator find(
-      const int start_yaw,
-      const CyclicVecInt<3, 2>& goal) const
-  {
-    int i = start_yaw % page_size_;
-    if (i < 0)
-      i += page_size_;
-    return cache_[i].find(goal);
-  }
-  inline const typename Cache::const_iterator end(
-      const int start_yaw) const
-  {
-    int i = start_yaw % page_size_;
-    if (i < 0)
-      i += page_size_;
-    return cache_[i].cend();
-  }
-
-  inline const CyclicVecInt<3, 2>& getMaxRange() const
-  {
-    return max_range_;
-  }
-
-  void reset(
-      const float linear_resolution,
-      const float angular_resolution,
-      const int range,
-      const std::function<void(CyclicVecInt<3, 2>, size_t&, size_t&)> gm_addr);
-
-protected:
-  std::vector<Cache> cache_;
-  int page_size_;
-  CyclicVecInt<3, 2> max_range_;
+  virtual float cost(
+      const Vec& cur, const Vec& next, const std::vector<VecWithCost>& start, const Vec& goal) const = 0;
+  virtual float costEstim(
+      const Vec& cur, const Vec& next) const = 0;
+  virtual const std::vector<Vec>& searchGrids(
+      const Vec& cur, const std::vector<VecWithCost>& start, const Vec& goal) const = 0;
 };
-}  // namespace planner_3d
 }  // namespace planner_cspace
 
-#endif  // PLANNER_CSPACE_PLANNER_3D_MOTION_CACHE_H
+#endif  // PLANNER_CSPACE_GRID_ASTAR_MODEL_H
