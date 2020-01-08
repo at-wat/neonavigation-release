@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019, the neonavigation authors
+ * Copyright (c) 2019-2020, the neonavigation authors
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,80 +27,61 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PLANNER_CSPACE_PLANNER_3D_MOTION_CACHE_H
-#define PLANNER_CSPACE_PLANNER_3D_MOTION_CACHE_H
+#ifndef PLANNER_CSPACE_PLANNER_2DOF_SERIAL_JOINTS_GRID_ASTAR_MODEL_H
+#define PLANNER_CSPACE_PLANNER_2DOF_SERIAL_JOINTS_GRID_ASTAR_MODEL_H
 
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <planner_cspace/cyclic_vec.h>
+#include <planner_cspace/grid_astar_model.h>
+#include <planner_cspace/blockmem_gridmap.h>
 
 namespace planner_cspace
 {
-namespace planner_3d
+namespace planner_2dof_serial_joints
 {
-class MotionCache
+class CostCoeff
 {
 public:
-  class Page
-  {
-  protected:
-    friend class MotionCache;
+  float weight_cost_;
+  float expand_;
+};
 
-    std::vector<CyclicVecInt<3, 2>> motion_;
-    float distance_;
-
-  public:
-    inline float getDistance() const
-    {
-      return distance_;
-    }
-    const std::vector<CyclicVecInt<3, 2>>& getMotion() const
-    {
-      return motion_;
-    }
-  };
-
-  using Cache =
-      std::unordered_map<CyclicVecInt<3, 2>, Page, CyclicVecInt<3, 2>>;
-
-  using Ptr = std::shared_ptr<MotionCache>;
-
-  inline const typename Cache::const_iterator find(
-      const int start_yaw,
-      const CyclicVecInt<3, 2>& goal) const
-  {
-    int i = start_yaw % page_size_;
-    if (i < 0)
-      i += page_size_;
-    return cache_[i].find(goal);
-  }
-  inline const typename Cache::const_iterator end(
-      const int start_yaw) const
-  {
-    int i = start_yaw % page_size_;
-    if (i < 0)
-      i += page_size_;
-    return cache_[i].cend();
-  }
-
-  inline const CyclicVecInt<3, 2>& getMaxRange() const
-  {
-    return max_range_;
-  }
-
-  void reset(
-      const float linear_resolution,
-      const float angular_resolution,
-      const int range,
-      const std::function<void(CyclicVecInt<3, 2>, size_t&, size_t&)> gm_addr);
+class GridAstarModel2DoFSerialJoint : public GridAstarModelBase<2, 0>
+{
+public:
+  using Ptr = std::shared_ptr<GridAstarModel2DoFSerialJoint>;
+  using ConstPtr = std::shared_ptr<const GridAstarModel2DoFSerialJoint>;
+  using Vec = CyclicVecInt<2, 0>;
+  using Vecf = CyclicVecFloat<2, 0>;
 
 protected:
-  std::vector<Cache> cache_;
-  int page_size_;
-  CyclicVecInt<3, 2> max_range_;
+  std::vector<Vec> search_list_;
+  Vecf euclid_cost_coef_;
+  int resolution_;
+  BlockMemGridmapBase<char, 2, 0>& cm_;
+  CostCoeff cc_;
+  int range_;
+
+public:
+  GridAstarModel2DoFSerialJoint(
+      const Vecf& euclid_cost_coef,
+      const int resolution,
+      BlockMemGridmapBase<char, 2, 0>& cm,
+      const CostCoeff& cc,
+      const int range);
+  float euclidCost(const Vec& v) const;
+  float cost(
+      const Vec& cur, const Vec& next, const std::vector<VecWithCost>& start, const Vec& goal) const override;
+  float costEstim(
+      const Vec& cur, const Vec& goal) const override;
+  const std::vector<Vec>& searchGrids(
+      const Vec& p,
+      const std::vector<VecWithCost>& ss,
+      const Vec& es) const override;
 };
-}  // namespace planner_3d
+}  // namespace planner_2dof_serial_joints
 }  // namespace planner_cspace
 
-#endif  // PLANNER_CSPACE_PLANNER_3D_MOTION_CACHE_H
+#endif  // PLANNER_CSPACE_PLANNER_2DOF_SERIAL_JOINTS_GRID_ASTAR_MODEL_H
