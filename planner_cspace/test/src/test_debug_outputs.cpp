@@ -55,6 +55,27 @@ public:
         break;
     }
   }
+  void showMap(const nav_msgs::OccupancyGrid::ConstPtr& msg)
+  {
+    std::cerr << std::hex;
+    for (size_t y = 0; y < msg->info.height; ++y)
+    {
+      for (size_t x = 0; x < msg->info.width; ++x)
+      {
+        std::cerr << (msg->data[x + y * msg->info.width] / 11);
+      }
+      std::cerr << std::endl;
+    }
+    std::cerr << std::dec;
+
+    std::streamsize ss = std::cerr.precision();
+    std::cerr << "path:" << std::endl
+              << std::setprecision(3);
+    for (const auto& p : path_->poses)
+      std::cerr << p.pose.position.x << ", " << p.pose.position.y << ", " << std::endl;
+
+    std::cerr << std::setprecision(ss);
+  }
 
 protected:
   void cbHysteresis(const nav_msgs::OccupancyGrid::ConstPtr& msg)
@@ -74,12 +95,16 @@ protected:
   void cbPath(const nav_msgs::Path::ConstPtr& msg)
   {
     if (msg->poses.size() > 0)
+    {
       ++cnt_path_;
+      path_ = msg;
+    }
   }
 
   ros::NodeHandle nh_;
   nav_msgs::OccupancyGrid::ConstPtr map_hysteresis_;
   nav_msgs::OccupancyGrid::ConstPtr map_remembered_;
+  nav_msgs::Path::ConstPtr path_;
   ros::Subscriber sub_status_;
   ros::Subscriber sub_path_;
   ros::Subscriber sub_hysteresis_;
@@ -120,6 +145,10 @@ TEST_F(DebugOutputsTest, Hysteresis)
     const size_t addr = data.x + data.y * map_hysteresis_->info.width;
     EXPECT_EQ(data.value, map_hysteresis_->data[addr]) << "x: " << data.x << ", y: " << data.y;
   }
+  if (::testing::Test::HasFailure())
+  {
+    showMap(map_hysteresis_);
+  }
 }
 
 TEST_F(DebugOutputsTest, Remembered)
@@ -142,6 +171,10 @@ TEST_F(DebugOutputsTest, Remembered)
   {
     const size_t addr = data.x + data.y * map_remembered_->info.width;
     EXPECT_EQ(data.value, map_remembered_->data[addr]) << "x: " << data.x << ", y: " << data.y;
+  }
+  if (::testing::Test::HasFailure())
+  {
+    showMap(map_remembered_);
   }
 }
 
