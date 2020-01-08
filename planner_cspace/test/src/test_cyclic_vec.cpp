@@ -27,12 +27,15 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cmath>
 #include <cstddef>
-
-#include <gtest/gtest.h>
 
 #include <planner_cspace/cyclic_vec.h>
 
+#include <gtest/gtest.h>
+
+namespace planner_cspace
+{
 TEST(CyclicVec, InitFloat)
 {
   const float val[3] =
@@ -104,7 +107,7 @@ TEST(CyclicVec, LengthInt)
 
   ASSERT_EQ(v.sqlen(), 25);
   ASSERT_EQ(v.len(), 5.0);
-  ASSERT_EQ(v.norm(), sqrtf(50));
+  ASSERT_EQ(v.norm(), std::sqrt(50.0f));
 }
 
 TEST(CyclicVec, LengthFloat)
@@ -114,7 +117,7 @@ TEST(CyclicVec, LengthFloat)
 
   ASSERT_EQ(v.sqlen(), 25.0);
   ASSERT_EQ(v.len(), 5.0);
-  ASSERT_EQ(v.norm(), sqrtf(50.0));
+  ASSERT_EQ(v.norm(), std::sqrt(50.0f));
 }
 
 TEST(CyclicVec, Cycle)
@@ -132,6 +135,7 @@ TEST(CyclicVec, Cycle)
   v.cycleUnsigned(4);
   ASSERT_EQ(v[2], 3);
 }
+}  // namespace planner_cspace
 
 int main(int argc, char** argv)
 {

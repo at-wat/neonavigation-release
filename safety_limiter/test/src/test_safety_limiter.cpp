@@ -27,29 +27,22 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <algorithm>
+#include <cmath>
+#include <string>
+
 #include <ros/ros.h>
 
 #include <diagnostic_msgs/DiagnosticStatus.h>
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/PointCloud2.h>
 
-#include <algorithm>
-#include <string>
+#include <test_safety_limiter_base.h>
 
 #include <gtest/gtest.h>
 
-#include <test_safety_limiter_base.h>
-
 TEST_F(SafetyLimiterTest, Timeouts)
 {
-  geometry_msgs::Twist::ConstPtr cmd_vel;
-  const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-      [&cmd_vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-  {
-    cmd_vel = msg;
-  };
-  ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
-
   ros::Rate wait(10.0);
 
   for (int with_cloud = 0; with_cloud < 3; ++with_cloud)
@@ -61,7 +54,7 @@ TEST_F(SafetyLimiterTest, Timeouts)
           ", with_cloud: " + std::to_string(with_cloud);
       ros::Duration(0.3).sleep();
 
-      cmd_vel.reset();
+      cmd_vel_.reset();
       for (int i = 0; i < 20; ++i)
       {
         ASSERT_TRUE(ros::ok());
@@ -85,25 +78,25 @@ TEST_F(SafetyLimiterTest, Timeouts)
         wait.sleep();
         ros::spinOnce();
 
-        if (i > 5 && cmd_vel)
+        if (i > 5 && cmd_vel_)
         {
           if (with_watchdog_reset > 0 && with_cloud > 1)
           {
-            ASSERT_EQ(cmd_vel->linear.x, vel) << test_condition;
-            ASSERT_EQ(cmd_vel->linear.y, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->linear.z, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->angular.x, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->angular.y, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->angular.z, ang_vel) << test_condition;
+            ASSERT_EQ(cmd_vel_->linear.x, vel) << test_condition;
+            ASSERT_EQ(cmd_vel_->linear.y, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->linear.z, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->angular.x, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->angular.y, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->angular.z, ang_vel) << test_condition;
           }
           else
           {
-            ASSERT_EQ(cmd_vel->linear.x, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->linear.y, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->linear.z, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->angular.x, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->angular.y, 0.0) << test_condition;
-            ASSERT_EQ(cmd_vel->angular.z, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->linear.x, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->linear.y, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->linear.z, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->angular.x, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->angular.y, 0.0) << test_condition;
+            ASSERT_EQ(cmd_vel_->angular.z, 0.0) << test_condition;
           }
         }
       }
@@ -151,39 +144,32 @@ TEST_F(SafetyLimiterTest, CloudBuffering)
   }
 
   bool received = false;
-  bool failed = false;
   bool en = false;
   // 1.0 m/ss, obstacle at 0.5 m: limited to 1.0 m/s (t_margin: 0)
-  const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-      [&received, &failed, &en](const geometry_msgs::Twist::ConstPtr& msg) -> void
-  {
-    if (!en)
-      return;
-    received = true;
-    failed = true;
-    ASSERT_NEAR(msg->linear.x, 1.0, 1e-1);
-    failed = false;
-  };
-  ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-  for (int i = 0; i < 60 * 6 && ros::ok() && !failed; ++i)
+  for (int i = 0; i < 60 * 6 && ros::ok(); ++i)
   {
     // enable check after two cycles of safety_limiter
     if (i > 8)
       en = true;
     // safety_limiter: 15 hz, cloud publish: 60 hz
     // safety_limiter must check 4 buffered clouds
-    // 1/3 of pointclouds have collision point
-    if ((i % 3) == 0)
-      publishSinglePointPointcloud2(0.5, 0, 0, "base_link", ros::Time::now());
-    else
+    // 3/4 of pointclouds have collision point
+    if ((i % 4) == 0)
       publishSinglePointPointcloud2(10, 0, 0, "base_link", ros::Time::now());
+    else
+      publishSinglePointPointcloud2(0.5, 0, 0, "base_link", ros::Time::now());
 
     publishWatchdogReset();
     publishTwist(2.0, 0);
 
     wait.sleep();
     ros::spinOnce();
+    if (en && cmd_vel_)
+    {
+      received = true;
+      ASSERT_NEAR(cmd_vel_->linear.x, 1.0, 1e-1);
+    }
   }
   ASSERT_TRUE(received);
 }
@@ -206,22 +192,9 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinear)
   {
     // 1.0 m/ss, obstacle at 0.5 m: limited to 1.0 m/s
     bool received = false;
-    bool failed = false;
     bool en = false;
-    const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-        [&received, &failed, &en, vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-    {
-      if (!en)
-        return;
-      const float expected_vel = std::min<float>(vel, 1.0);
-      received = true;
-      failed = true;
-      ASSERT_NEAR(msg->linear.x, expected_vel, 1e-1);
-      failed = false;
-    };
-    ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-    for (int i = 0; i < 10 && ros::ok() && !failed; ++i)
+    for (int i = 0; i < 10 && ros::ok(); ++i)
     {
       if (i > 5)
         en = true;
@@ -231,6 +204,12 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinear)
 
       wait.sleep();
       ros::spinOnce();
+      if (en && cmd_vel_)
+      {
+        received = true;
+        const float expected_vel = std::min<float>(vel, 1.0);
+        ASSERT_NEAR(cmd_vel_->linear.x, expected_vel, 1e-1);
+      }
     }
     ASSERT_TRUE(hasDiag());
     EXPECT_EQ(diagnostic_msgs::DiagnosticStatus::OK, diag_->status[0].level)
@@ -242,7 +221,6 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinear)
     EXPECT_EQ(status_->stuck_started_since, ros::Time(0));
 
     ASSERT_TRUE(received);
-    sub_cmd_vel.shutdown();
   }
 }
 
@@ -264,22 +242,9 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearBackward)
   {
     // 1.0 m/ss, obstacle at -2.5 m: limited to -1.0 m/s
     bool received = false;
-    bool failed = false;
     bool en = false;
-    const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-        [&received, &failed, &en, vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-    {
-      if (!en)
-        return;
-      const float expected_vel = std::max<float>(vel, -1.0);
-      received = true;
-      failed = true;
-      ASSERT_NEAR(msg->linear.x, expected_vel, 1e-1);
-      failed = false;
-    };
-    ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-    for (int i = 0; i < 10 && ros::ok() && !failed; ++i)
+    for (int i = 0; i < 10 && ros::ok(); ++i)
     {
       if (i > 5)
         en = true;
@@ -289,6 +254,12 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearBackward)
 
       wait.sleep();
       ros::spinOnce();
+      if (en && cmd_vel_)
+      {
+        received = true;
+        const float expected_vel = std::max<float>(vel, -1.0);
+        ASSERT_NEAR(cmd_vel_->linear.x, expected_vel, 1e-1);
+      }
     }
     ASSERT_TRUE(hasDiag());
     EXPECT_EQ(diagnostic_msgs::DiagnosticStatus::OK, diag_->status[0].level)
@@ -300,7 +271,6 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearBackward)
     EXPECT_EQ(status_->stuck_started_since, ros::Time(0));
 
     ASSERT_TRUE(received);
-    sub_cmd_vel.shutdown();
   }
 }
 
@@ -323,30 +293,9 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearEscape)
   {
     // 1.0 m/ss, obstacle at -0.05 m (already in collision): escape motion must be allowed
     bool received = false;
-    bool failed = false;
     bool en = false;
-    const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-        [&received, &failed, &en, vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-    {
-      if (!en)
-        return;
-      received = true;
-      failed = true;
-      if (vel < 0)
-      {
-        // escaping from collision must be allowed
-        ASSERT_NEAR(msg->linear.x, vel, 1e-1);
-      }
-      else
-      {
-        // colliding motion must be limited
-        ASSERT_NEAR(msg->linear.x, 0.0, 1e-1);
-      }
-      failed = false;
-    };
-    ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-    for (int i = 0; i < 10 && ros::ok() && !failed; ++i)
+    for (int i = 0; i < 10 && ros::ok(); ++i)
     {
       if (i > 5)
         en = true;
@@ -356,6 +305,20 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearEscape)
 
       wait.sleep();
       ros::spinOnce();
+      if (en && cmd_vel_)
+      {
+        received = true;
+        if (vel < 0)
+        {
+          // escaping from collision must be allowed
+          ASSERT_NEAR(cmd_vel_->linear.x, vel, 1e-1);
+        }
+        else
+        {
+          // colliding motion must be limited
+          ASSERT_NEAR(cmd_vel_->linear.x, 0.0, 1e-1);
+        }
+      }
     }
     if (vel < 0)
     {
@@ -376,7 +339,6 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearEscape)
     EXPECT_NE(status_->stuck_started_since, ros::Time(0));
 
     ASSERT_TRUE(received);
-    sub_cmd_vel.shutdown();
   }
 }
 
@@ -398,22 +360,9 @@ TEST_F(SafetyLimiterTest, SafetyLimitAngular)
   {
     // pi/2 rad/ss, obstacle at pi/4 rad: limited to pi/2 rad/s
     bool received = false;
-    bool failed = false;
     bool en = false;
-    const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-        [&received, &failed, &en, vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-    {
-      if (!en)
-        return;
-      const float expected_vel = std::min<float>(vel, M_PI / 2);
-      received = true;
-      failed = true;
-      ASSERT_NEAR(msg->angular.z, expected_vel, M_PI / 20);
-      failed = false;
-    };
-    ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-    for (int i = 0; i < 10 && ros::ok() && !failed; ++i)
+    for (int i = 0; i < 10 && ros::ok(); ++i)
     {
       if (i > 5)
         en = true;
@@ -423,6 +372,12 @@ TEST_F(SafetyLimiterTest, SafetyLimitAngular)
 
       wait.sleep();
       ros::spinOnce();
+      if (en && cmd_vel_)
+      {
+        received = true;
+        const float expected_vel = std::min<float>(vel, M_PI / 2);
+        ASSERT_NEAR(cmd_vel_->angular.z, expected_vel, M_PI / 20);
+      }
     }
     ASSERT_TRUE(hasDiag());
     EXPECT_EQ(diagnostic_msgs::DiagnosticStatus::OK, diag_->status[0].level)
@@ -434,7 +389,6 @@ TEST_F(SafetyLimiterTest, SafetyLimitAngular)
     EXPECT_EQ(status_->stuck_started_since, ros::Time(0));
 
     ASSERT_TRUE(received);
-    sub_cmd_vel.shutdown();
   }
 }
 
@@ -457,30 +411,9 @@ TEST_F(SafetyLimiterTest, SafetyLimitAngularEscape)
   {
     // already colliding at rear-right side: only positive rotation must be allowed
     bool received = false;
-    bool failed = false;
     bool en = false;
-    const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-        [&received, &failed, &en, vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-    {
-      if (!en)
-        return;
-      received = true;
-      failed = true;
-      if (vel < 0)
-      {
-        // escaping from collision must be allowed
-        ASSERT_NEAR(msg->angular.z, vel, 1e-1);
-      }
-      else
-      {
-        // colliding motion must be limited
-        ASSERT_NEAR(msg->angular.z, 0.0, 1e-1);
-      }
-      failed = false;
-    };
-    ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-    for (int i = 0; i < 10 && ros::ok() && !failed; ++i)
+    for (int i = 0; i < 10 && ros::ok(); ++i)
     {
       if (i > 5)
         en = true;
@@ -490,6 +423,20 @@ TEST_F(SafetyLimiterTest, SafetyLimitAngularEscape)
 
       wait.sleep();
       ros::spinOnce();
+      if (en && cmd_vel_)
+      {
+        received = true;
+        if (vel < 0)
+        {
+          // escaping from collision must be allowed
+          ASSERT_NEAR(cmd_vel_->angular.z, vel, 1e-1);
+        }
+        else
+        {
+          // colliding motion must be limited
+          ASSERT_NEAR(cmd_vel_->angular.z, 0.0, 1e-1);
+        }
+      }
     }
     if (vel < 0)
     {
@@ -510,7 +457,6 @@ TEST_F(SafetyLimiterTest, SafetyLimitAngularEscape)
     EXPECT_NE(status_->stuck_started_since, ros::Time(0));
 
     ASSERT_TRUE(received);
-    sub_cmd_vel.shutdown();
   }
 }
 
@@ -523,20 +469,9 @@ TEST_F(SafetyLimiterTest, NoCollision)
     for (float ang_vel = 0.0; ang_vel < 1.0; ang_vel += 0.2)
     {
       bool received = false;
-      bool failed = false;
       bool en = false;
-      const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-          [&received, &failed, &en, vel, ang_vel](const geometry_msgs::Twist::ConstPtr& msg) -> void
-      {
-        failed = true;
-        received = true;
-        ASSERT_NEAR(msg->linear.x, vel, 1e-3);
-        ASSERT_NEAR(msg->angular.z, ang_vel, 1e-3);
-        failed = false;
-      };
-      ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
 
-      for (int i = 0; i < 10 && ros::ok() && !failed; ++i)
+      for (int i = 0; i < 10 && ros::ok(); ++i)
       {
         if (i > 5)
           en = true;
@@ -546,6 +481,12 @@ TEST_F(SafetyLimiterTest, NoCollision)
 
         wait.sleep();
         ros::spinOnce();
+        if (en && cmd_vel_)
+        {
+          received = true;
+          ASSERT_NEAR(cmd_vel_->linear.x, vel, 1e-3);
+          ASSERT_NEAR(cmd_vel_->angular.z, ang_vel, 1e-3);
+        }
       }
       ASSERT_TRUE(received);
 
@@ -558,8 +499,6 @@ TEST_F(SafetyLimiterTest, NoCollision)
       EXPECT_TRUE(status_->is_cloud_available);
       EXPECT_FALSE(status_->has_watchdog_timed_out);
       EXPECT_EQ(status_->stuck_started_since, ros::Time(0));
-
-      sub_cmd_vel.shutdown();
     }
   }
 }
@@ -577,17 +516,8 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearSimpleSimulation)
   {
     float x = 0;
     bool stop = false;
-    const boost::function<void(const geometry_msgs::Twist::ConstPtr&)> cb_cmd_vel =
-        [dt, &x, &stop](const geometry_msgs::Twist::ConstPtr& msg) -> void
-    {
-      if (std::abs(msg->linear.x) < 1e-4 && x > 0.5)
-        stop = true;
 
-      x += dt * msg->linear.x;
-    };
-    ros::Subscriber sub_cmd_vel = nh_.subscribe("cmd_vel", 1, cb_cmd_vel);
-
-    for (int i = 0; i < lround(10.0 / dt) && ros::ok() && !stop; ++i)
+    for (int i = 0; i < std::lround(10.0 / dt) && ros::ok() && !stop; ++i)
     {
       if (vel > 0)
         publishSinglePointPointcloud2(1.0 - x, 0, 0, "base_link", ros::Time::now());
@@ -599,6 +529,13 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearSimpleSimulation)
 
       wait.sleep();
       ros::spinOnce();
+      if (cmd_vel_)
+      {
+        if (std::abs(cmd_vel_->linear.x) < 1e-4 && x > 0.5)
+          stop = true;
+
+        x += dt * cmd_vel_->linear.x;
+      }
     }
     if (vel > 0)
     {
@@ -610,7 +547,6 @@ TEST_F(SafetyLimiterTest, SafetyLimitLinearSimpleSimulation)
       EXPECT_LT(-1.01, x);
       EXPECT_GT(-0.95, x);
     }
-    sub_cmd_vel.shutdown();
   }
 }
 
