@@ -30,13 +30,13 @@
 #ifndef PLANNER_CSPACE_CYCLIC_VEC_H
 #define PLANNER_CSPACE_CYCLIC_VEC_H
 
-#include <memory>
 #define _USE_MATH_DEFINES
-#include <cmath>
 #include <cfloat>
+#include <cmath>
 #include <initializer_list>
 #include <list>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -44,6 +44,8 @@
 
 #include <planner_cspace/reservable_priority_queue.h>
 
+namespace planner_cspace
+{
 namespace cyclic_vec_type_conversion_rule
 {
 template <typename T>
@@ -57,7 +59,7 @@ inline void convert(const int val, float& ret)
 }
 inline void convert(const float val, int& ret)
 {
-  ret = lroundf(val);
+  ret = std::lround(val);
 }
 
 inline void normalizeFloatAngle(float& val)
@@ -98,6 +100,11 @@ protected:
       const int i,
       const int res, const ArgList&... rest)
   {
+    cycleElement(i, res);
+    cycleElements(i + 1, rest...);
+  }
+  void cycleElement(const int i, const int res)
+  {
     assert(i < DIM);
 
     e_[i] = e_[i] % res;
@@ -105,8 +112,6 @@ protected:
       e_[i] += res;
     else if (e_[i] >= res / 2)
       e_[i] -= res;
-
-    cycleElements(i + 1, rest...);
   }
   void cycleElements(const int i)
   {
@@ -117,13 +122,16 @@ protected:
       const int i,
       const int res, const ArgList&... rest)
   {
+    cycleUnsignedElement(i, res);
+    cycleUnsignedElements(i + 1, rest...);
+  }
+  void cycleUnsignedElement(const int i, const int res)
+  {
     assert(i < DIM);
 
     e_[i] = e_[i] % res;
     if (e_[i] < 0)
       e_[i] += res;
-
-    cycleUnsignedElements(i + 1, rest...);
   }
   void cycleUnsignedElements(const int i)
   {
@@ -217,7 +225,7 @@ public:
     const auto to_b = (*this) - b;
     if ((a - b).dot2d(to_b) <= 0)
       return to_b.len();
-    return fabs(distLine2d(a, b));
+    return std::abs(distLine2d(a, b));
   }
   T& operator[](const int& x)
   {
@@ -238,7 +246,7 @@ public:
   }
   float len() const
   {
-    return sqrtf(sqlen());
+    return std::sqrt(sqlen());
   }
   float gridToLenFactor() const
   {
@@ -250,9 +258,9 @@ public:
     float out = 0;
     for (int i = 0; i < DIM; i++)
     {
-      out += powf(e_[i], 2.0);
+      out += std::pow(e_[i], 2);
     }
-    return sqrtf(out);
+    return std::sqrt(out);
   }
 
   void rotate(const float ang)
@@ -287,14 +295,14 @@ public:
     static_assert(
         std::is_same<int, T>(), "cycle is provided only for int");
     for (int i = NONCYCLIC; i < DIM; ++i)
-      cycleElements(i, res[i]);
+      cycleElement(i, res[i]);
   }
   void cycleUnsigned(const CyclicVecBase<DIM, NONCYCLIC, T>& res)
   {
     static_assert(
         std::is_same<int, T>(), "cycle is provided only for int");
     for (int i = NONCYCLIC; i < DIM; ++i)
-      cycleUnsignedElements(i, res[i]);
+      cycleUnsignedElement(i, res[i]);
   }
 
   // Hash
@@ -327,5 +335,7 @@ template <int DIM, int NONCYCLIC>
 using CyclicVecInt = CyclicVecBase<DIM, NONCYCLIC, int>;
 template <int DIM, int NONCYCLIC>
 using CyclicVecFloat = CyclicVecBase<DIM, NONCYCLIC, float>;
+
+}  // namespace planner_cspace
 
 #endif  // PLANNER_CSPACE_CYCLIC_VEC_H

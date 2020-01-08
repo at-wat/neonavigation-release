@@ -33,9 +33,12 @@
 #include <vector>
 
 #include <planner_cspace/cyclic_vec.h>
-
 #include <planner_cspace/planner_3d/rotation_cache.h>
 
+namespace planner_cspace
+{
+namespace planner_3d
+{
 void RotationCache::Page::reset(const CyclicVecInt<3, 2>& size)
 {
   size_t ser_size = 1;
@@ -81,7 +84,7 @@ void RotationCache::reset(
           const float cos_v = std::cos(v[2]);
           const float r1 = v[1] + v[0] * cos_v / sin_v;
           const float r2 = std::copysign(
-              sqrtf(powf(v[0], 2.0) + powf(v[0] * cos_v / sin_v, 2.0)),
+              std::sqrt(std::pow(v[0], 2) + std::pow(v[0] * cos_v / sin_v, 2)),
               v[0] * sin_v);
           r.radiuses(d) = std::pair<float, float>(r1, r2);
         }
@@ -89,3 +92,5 @@ void RotationCache::reset(
     }
   }
 }
+}  // namespace planner_3d
+}  // namespace planner_cspace
