@@ -62,7 +62,7 @@ TEST(GridAstarModel3D, Cost)
   cc.in_place_turn_ = 0.0;
   cc.hysteresis_max_dist_ = 0.0;
   cc.hysteresis_expand_ = 0.0;
-  cc.min_curve_raduis_ = 0.0;
+  cc.min_curve_radius_ = 0.0;
   cc.max_vel_ = 1.0;
   cc.max_ang_vel_ = 1.0;
   cc.angle_resolution_aspect_ = 1.0;
@@ -87,12 +87,10 @@ TEST(GridAstarModel3D, Cost)
   const float c_curve = model.cost(start, goal_curve, starts, goal_curve);
   const float c_drift = model.cost(start, goal_drift, starts, goal_drift);
   const float c_drift_curve = model.cost(start, goal_curve_drift, starts, goal_curve_drift);
-  const float c_curve_sign_err = model.cost(start, goal_curve_sign_err, starts, goal_curve_sign_err);
 
   EXPECT_LT(c_straight, c_curve);
   EXPECT_LT(c_straight, c_drift);
   EXPECT_LT(c_straight, c_drift_curve);
-  EXPECT_EQ(-1, c_curve_sign_err);
 }
 }  // namespace planner_3d
 }  // namespace planner_cspace
