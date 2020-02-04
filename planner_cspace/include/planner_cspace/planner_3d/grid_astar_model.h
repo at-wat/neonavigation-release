@@ -35,12 +35,12 @@
 
 #include <costmap_cspace_msgs/MapMetaData3D.h>
 
-#include <planner_cspace/cyclic_vec.h>
-#include <planner_cspace/planner_3d/motion_cache.h>
-#include <planner_cspace/planner_3d/rotation_cache.h>
-#include <planner_cspace/planner_3d/path_interpolator.h>
-#include <planner_cspace/grid_astar_model.h>
 #include <planner_cspace/blockmem_gridmap.h>
+#include <planner_cspace/cyclic_vec.h>
+#include <planner_cspace/grid_astar_model.h>
+#include <planner_cspace/planner_3d/motion_cache.h>
+#include <planner_cspace/planner_3d/path_interpolator.h>
+#include <planner_cspace/planner_3d/rotation_cache.h>
 
 namespace planner_cspace
 {
@@ -59,7 +59,7 @@ public:
   float in_place_turn_;
   float hysteresis_max_dist_;
   float hysteresis_expand_;
-  float min_curve_raduis_;
+  float min_curve_radius_;
   float max_vel_;
   float max_ang_vel_;
   float angle_resolution_aspect_;
@@ -81,7 +81,7 @@ protected:
   costmap_cspace_msgs::MapMetaData3D map_info_;
   Vecf euclid_cost_coef_;
   Vecf resolution_;
-  std::vector<Vec> search_list_;
+  std::vector<std::vector<Vec>> motion_primitives_;
   std::vector<Vec> search_list_rough_;
   int local_range_;
   BlockMemGridmapBase<float, 3, 2>& cost_estim_cache_;
