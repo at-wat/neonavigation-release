@@ -1,3 +1,37 @@
+## neonavigation (noetic) - 0.8.3-1
+
+The packages in the `neonavigation` repository were released into the `noetic` distro by running `/usr/local/bin/bloom-release neonavigation --track noetic --ros-distro noetic` on `Sun, 26 Apr 2020 11:35:58 -0000`
+
+These packages were released:
+- `costmap_cspace`
+- `joystick_interrupt`
+- `map_organizer`
+- `neonavigation`
+- `neonavigation_common`
+- `neonavigation_launch`
+- `obj_to_pointcloud`
+- `planner_cspace`
+- `safety_limiter`
+- `track_odometry`
+- `trajectory_tracker`
+
+Version of package(s) in repository `neonavigation`:
+
+- upstream repository: https://github.com/at-wat/neonavigation.git
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `null`
+- new version: `0.8.3-1`
+
+Versions of tools used:
+
+- bloom version: `0.9.3`
+- catkin_pkg version: `0.4.16`
+- rosdep version: `0.18.0`
+- rosdistro version: `0.8.0`
+- vcstools version: `0.1.42`
+
+
 ## neonavigation (melodic) - 0.8.3-1
 
 The packages in the `neonavigation` repository were released into the `melodic` distro by running `/usr/bin/bloom-release -y --no-web --ros-distro melodic --override-release-repository-push-url https://github.com/at-wat/neonavigation-release.git neonavigation` on `Sun, 26 Apr 2020 11:21:07 -0000`
