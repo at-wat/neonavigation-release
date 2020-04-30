@@ -4,7 +4,6 @@ project(obj_to_pointcloud)
 set(CATKIN_DEPENDS
   roscpp
 
-  eigen_conversions
   geometry_msgs
   pcl_conversions
   sensor_msgs
@@ -26,16 +25,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(${catkin_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${Eigen3_INCLUDE_DIRS})
 add_definitions(${PCL_DEFINITIONS})
 
-
-# Workaround for debian stretch build (https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=894656)
-list(REMOVE_ITEM PCL_LIBRARIES
-  "vtkGUISupportQt"
-  "vtkGUISupportQtOpenGL"
-  "vtkGUISupportQtSQL"
-  "vtkGUISupportQtWebkit"
-  "vtkViewsQt"
-  "vtkRenderingQt"
-)
 
 # Workaround for the bug in PCL(<1.8.1) https://github.com/PointCloudLibrary/pcl/issues/1406
 remove_definitions(-DDISABLE_LIBUSB-1.0)
