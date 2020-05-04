@@ -1,0 +1,12 @@
+Source: ros-noetic-planner-cspace
+Section: misc
+Priority: optional
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-noetic-actionlib, ros-noetic-catkin, ros-noetic-costmap-cspace, ros-noetic-costmap-cspace-msgs, ros-noetic-diagnostic-updater, ros-noetic-geometry-msgs, ros-noetic-map-server, ros-noetic-move-base-msgs, ros-noetic-nav-msgs, ros-noetic-neonavigation-common, ros-noetic-planner-cspace-msgs (>= 0.7.0), ros-noetic-roscpp, ros-noetic-roslint, ros-noetic-rostest, ros-noetic-sensor-msgs, ros-noetic-std-srvs, ros-noetic-tf2, ros-noetic-tf2-geometry-msgs, ros-noetic-tf2-ros, ros-noetic-trajectory-msgs, ros-noetic-trajectory-tracker, ros-noetic-trajectory-tracker-msgs
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-noetic-planner-cspace
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-noetic-actionlib, ros-noetic-costmap-cspace, ros-noetic-costmap-cspace-msgs, ros-noetic-diagnostic-updater, ros-noetic-geometry-msgs, ros-noetic-move-base-msgs, ros-noetic-nav-msgs, ros-noetic-neonavigation-common, ros-noetic-planner-cspace-msgs (>= 0.7.0), ros-noetic-roscpp, ros-noetic-sensor-msgs, ros-noetic-std-srvs, ros-noetic-tf2, ros-noetic-tf2-geometry-msgs, ros-noetic-tf2-ros, ros-noetic-trajectory-msgs, ros-noetic-trajectory-tracker-msgs
+Description: 3-dof configuration space planner for mobile robot
