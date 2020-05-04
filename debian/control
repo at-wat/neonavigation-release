@@ -1,0 +1,12 @@
+Source: ros-kinetic-joystick-interrupt
+Section: misc
+Priority: optional
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-kinetic-catkin, ros-kinetic-geometry-msgs, ros-kinetic-neonavigation-common, ros-kinetic-roscpp, ros-kinetic-roslint, ros-kinetic-rostest, ros-kinetic-sensor-msgs, ros-kinetic-topic-tools
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-kinetic-joystick-interrupt
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-kinetic-geometry-msgs, ros-kinetic-neonavigation-common, ros-kinetic-roscpp, ros-kinetic-sensor-msgs, ros-kinetic-topic-tools
+Description: Interrupt cmd_vel by joystick input
