@@ -1,1 +1,1 @@
-{"base": "4875abeb", "parent": "debian/kinetic/costmap_cspace", "previous": "9a37a663", "trim": "", "trimbase": ""}
+{"trim": "", "base": "98b0f6d", "trimbase": "", "parent": "debian/kinetic/costmap_cspace", "previous": "20a3615"}
