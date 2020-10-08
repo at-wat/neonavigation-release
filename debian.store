@@ -1,1 +1,1 @@
-{"base": "5c6c6caa", "parent": "debian/kinetic/obj_to_pointcloud", "previous": "f2f6e3fb", "trim": "", "trimbase": ""}
+{"trim": "", "base": "26ed5f3", "trimbase": "", "parent": "debian/kinetic/obj_to_pointcloud", "previous": "f0aedfe"}
