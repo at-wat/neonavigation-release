@@ -1,1 +1,1 @@
-{"base": "dc7fb307", "parent": "debian/melodic/obj_to_pointcloud", "previous": "da2b8980", "trim": "", "trimbase": ""}
+{"trim": "", "base": "0bf5a0a", "trimbase": "", "parent": "debian/melodic/obj_to_pointcloud", "previous": "b4ab1ef"}
