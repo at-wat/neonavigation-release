@@ -1,1 +1,1 @@
-{"base": "f57e8408", "parent": "debian/melodic/costmap_cspace", "previous": "9868de35", "trim": "", "trimbase": ""}
+{"trim": "", "base": "2595fa9", "trimbase": "", "parent": "debian/melodic/costmap_cspace", "previous": "c76032b"}
