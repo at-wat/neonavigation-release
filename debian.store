@@ -1,1 +1,1 @@
-{"base": "1e72f822", "parent": "debian/kinetic/joystick_interrupt", "previous": "b4c50b96", "trim": "", "trimbase": ""}
+{"trim": "", "base": "a0f598b", "trimbase": "", "parent": "debian/kinetic/joystick_interrupt", "previous": "7f7094d"}
