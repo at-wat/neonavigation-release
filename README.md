@@ -1,92 +1,137 @@
-# neonavigation meta-package
+# map_organizer package
 
-![Build Status](https://github.com/at-wat/neonavigation/workflows/build/badge.svg)
-[![Codecov](https://codecov.io/gh/at-wat/neonavigation/branch/master/graph/badge.svg)](https://codecov.io/gh/at-wat/neonavigation)
-[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+The topic names will be migrated to ROS recommended namespace model.
+Set `/neonavigation_compatible` parameter to `1` to use new topic names.
+
+## pointcloud_to_maps
+
+pointcloud_to_maps node detects floors from given pointcloud and publishes layered OccupancyGrid.
+
+### Subscribed topics
+
+* ~/map_cloud (new: mapcloud) [sensor_msgs::PointCloud2]
+
+### Published topics
+
+* maps [map_organizer_msgs::OccupancyGridArray]
+* map? [nav_msgs::OccupancyGrid]
+
+### Services
 
 
-ROS meta-package for autonomous vehicle navigation.
+### Called services
 
-## Important notices
 
-- Topic/service namespace model is migrated to ROS recommended style.
-  See each package's README and runtime migration messages from the nodes.
+### Parameters
 
-## Install
+* points_thresh_rate (double, default 0.5)
+  > Layers with larger numbers of points than `(max * rate)` are extracted as floors.
+* floor_area_thresh_rate (double, default 0.8)
+  > Layers with `(max * rate)` are extracted as floors.
+* robot_height (double, default 1.0)
+  > Points with `(floor_height + floor_tolerance)` to `floor_height` of height are assumed as walls.
+* floor_height (double, default 0.1)
+  > Points with `+-floor_height` of height are assumed as floors.
+* floor_tolerance (double, default 0.2)
+  > Points with `floor_height` to `(floor_height + floor_tolerance)` of height are ignored.
+* min_floor_area (double, default 100.0)
+  > Minimum floor area (m^2).
 
-- **Note 1: neonavigation_msgs meta-package is required to build neonavigation meta-package.**
-- **Note 2: neonavigation_rviz_plugins meta-package is required to visualize PathWithVelocity message used between planner_3d and trajectory_tracker.**
 
-```shell
-# clone
-cd /path/to/your/catkin_ws/src
-git clone https://github.com/at-wat/neonavigation.git
-git clone https://github.com/at-wat/neonavigation_msgs.git
-git clone https://github.com/at-wat/neonavigation_rviz_plugins.git
+----
 
-# build
-cd /path/to/your/catkin_ws
-rosdep install --from-paths src --ignore-src -y  # Install dependencies
-catkin_make -DCMAKE_BUILD_TYPE=Release  # Release build is recommended
-```
+## tie_maps
 
-## Demo
+tie_maps node loads maps from files and ties into layered OccupancyGrid.
 
-A quick demonstration with a simple simulated robot is available.
+### Subscribed topics
 
-```
-roslaunch neonavigation_launch demo.launch
-```
 
-![Rviz image of the demo](https://github.com/at-wat/neonavigation/blob/master/neonavigation_launch/doc/images/demo.png?raw=true)
+### Published topics
 
-## Packages
+* maps [map_organizer_msgs::OccupancyGridArray]
+* map? [nav_msgs::OccupancyGrid]
 
-### [costmap_cspace](costmap_cspace/README.md)
+### Services
 
-3-DOF configuration space costmap handler.
 
-### [planner_cspace](planner_cspace/README.md)
+### Called services
 
-2-D/3-DOF seamless global-local path and motion planner and serial joint collision avoidance.
 
-### [safety_limiter](safety_limiter/README.md)
+### Parameters
 
-Collision prevention control.
+* "map_files" (string, default: std::string(""))
+* "frame_id" (string, default: std::string("map"))
 
-### [trajectory_tracker](trajectory_tracker/README.md)
+----
 
-Path following control and path handling. 
+## save_maps
 
-### [map_organizer](map_organizer/README.md)
+save_maps saves layered OccupancyGrid to map files.
 
-Layered map handler.
+### Subscribed topics
 
-### [track_odometry](track_odometry/README.md)
+* ~/maps (new: maps) [map_organizer_msgs::OccupancyGridArray]
 
-Slip compensation for vehicle odometry.
+### Published topics
 
-### [obj_to_pointcloud](obj_to_pointcloud/README.md)
 
-Obj surface data to pointcloud converter.
+### Services
 
-### [neonavigation_launch](neonavigation_launch/README.md)
 
-Sample launch files.
+### Called services
 
-## References
 
-A. Watanabe, D. Endo, G. Yamauchi and K. Nagatani, "*Neonavigation meta-package: 2-D/3-DOF seamless global-local planner for ROS — Development and field test on the representative offshore oil plant,*" 2016 IEEE International Symposium on Safety, Security, and Rescue Robotics (SSRR), Lausanne, Switzerland, 2016, pp. 86-91.
-(doi: 10.1109/SSRR.2016.7784282)
+### Parameters
 
-## Contributing
 
-*neonavigation meta-package* is developed under [GitHub flow](https://guides.github.com/introduction/flow/).
-Feel free to open new Issue and/or Pull Request.
+----
 
-The code in this repository is following [ROS C++ Style Guide](https://wiki.ros.org/CppStyleGuide).
-A configuration file for clang-format is available at https://github.com/seqsense/ros_style/.
+## select_map
 
-## License
+select_map node publishes the desired layer from layered OccupancyGrid.
 
-*neonavigation meta-package* is available under BSD license.
+### Subscribed topics
+
+* /maps (new: maps) [map_organizer_msgs::OccupancyGridArray]
+* ~/floor (new: floor) [std_msgs::Int32]
+
+### Published topics
+
+* /map (new: map) [nav_msgs::OccupancyGrid]
+* /tf
+
+### Services
+
+
+### Called services
+
+
+### Parameters
+
+
+----
+
+## pose_transform
+
+pose_transform transforms given pose into the desired tf-frame.
+This node is useful to convert rviz initialpose output to desired map frame.
+
+### Subscribed topics
+
+* ~/pose_in (new: pose_in) [geometry_msgs::PoseWithCovarianceStamped]
+* /tf
+
+### Published topics
+
+* ~/pose_out (new: pose_out) [geometry_msgs::PoseWithCovarianceStamped]
+
+### Services
+
+
+### Called services
+
+
+### Parameters
+
+* "to_frame" (string, default: std::string("map"))
