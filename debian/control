@@ -1,0 +1,12 @@
+Source: ros-melodic-map-organizer
+Section: misc
+Priority: optional
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), libeigen3-dev, libpcl-dev, ros-melodic-catkin, ros-melodic-geometry-msgs, ros-melodic-map-organizer-msgs, ros-melodic-map-server, ros-melodic-nav-msgs, ros-melodic-neonavigation-common, ros-melodic-pcl-conversions, ros-melodic-roscpp, ros-melodic-roslint, ros-melodic-rostest, ros-melodic-sensor-msgs, ros-melodic-tf2, ros-melodic-tf2-geometry-msgs, ros-melodic-tf2-ros
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-melodic-map-organizer
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libeigen3-dev, libpcl-apps1.8, libpcl-common1.8, libpcl-features1.8, libpcl-filters1.8, libpcl-io1.8, libpcl-kdtree1.8, libpcl-keypoints1.8, libpcl-ml1.8, libpcl-octree1.8, libpcl-outofcore1.8, libpcl-people1.8, libpcl-recognition1.8, libpcl-registration1.8, libpcl-sample-consensus1.8, libpcl-search1.8, libpcl-segmentation1.8, libpcl-stereo1.8, libpcl-surface1.8, libpcl-tracking1.8, libpcl-visualization1.8, ros-melodic-geometry-msgs, ros-melodic-map-organizer-msgs, ros-melodic-map-server, ros-melodic-nav-msgs, ros-melodic-neonavigation-common, ros-melodic-pcl-conversions, ros-melodic-roscpp, ros-melodic-sensor-msgs, ros-melodic-tf2, ros-melodic-tf2-geometry-msgs, ros-melodic-tf2-ros
+Description: Layered costmap organizer package
