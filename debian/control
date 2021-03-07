@@ -1,0 +1,12 @@
+Source: ros-kinetic-trajectory-tracker
+Section: misc
+Priority: optional
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), libeigen3-dev, ros-kinetic-catkin, ros-kinetic-dynamic-reconfigure, ros-kinetic-geometry-msgs, ros-kinetic-interactive-markers, ros-kinetic-nav-msgs, ros-kinetic-neonavigation-common, ros-kinetic-roscpp, ros-kinetic-roslint, ros-kinetic-rostest, ros-kinetic-std-srvs, ros-kinetic-tf2, ros-kinetic-tf2-geometry-msgs, ros-kinetic-tf2-ros, ros-kinetic-trajectory-tracker-msgs (>= 0.8.0)
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-kinetic-trajectory-tracker
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libeigen3-dev, ros-kinetic-dynamic-reconfigure, ros-kinetic-geometry-msgs, ros-kinetic-interactive-markers, ros-kinetic-nav-msgs, ros-kinetic-neonavigation-common, ros-kinetic-roscpp, ros-kinetic-std-srvs, ros-kinetic-tf2, ros-kinetic-tf2-geometry-msgs, ros-kinetic-tf2-ros, ros-kinetic-trajectory-tracker-msgs (>= 0.8.0)
+Description: Path following control package for wheeled mobile robot
