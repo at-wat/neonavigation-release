@@ -1,0 +1,12 @@
+Source: ros-kinetic-neonavigation
+Section: misc
+Priority: optional
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-kinetic-catkin (>= 0.7.22)
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-kinetic-neonavigation
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-kinetic-costmap-cspace, ros-kinetic-joystick-interrupt, ros-kinetic-map-organizer, ros-kinetic-neonavigation-common, ros-kinetic-neonavigation-launch, ros-kinetic-obj-to-pointcloud, ros-kinetic-planner-cspace, ros-kinetic-safety-limiter, ros-kinetic-track-odometry, ros-kinetic-trajectory-tracker
+Description: The neonavigation meta-package including 3-dof configuration space planner
