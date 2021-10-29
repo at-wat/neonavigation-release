@@ -1,0 +1,12 @@
+Source: ros-melodic-planner-cspace
+Section: misc
+Priority: optional
+Maintainer: Atsushi Watanabe <atsushi.w@ieee.org>
+Build-Depends: debhelper (>= 9.0.0), ros-melodic-actionlib, ros-melodic-catkin, ros-melodic-costmap-cspace, ros-melodic-costmap-cspace-msgs, ros-melodic-diagnostic-updater, ros-melodic-geometry-msgs, ros-melodic-map-server, ros-melodic-move-base-msgs, ros-melodic-nav-msgs, ros-melodic-neonavigation-common, ros-melodic-planner-cspace-msgs (>= 0.7.0), ros-melodic-roscpp, ros-melodic-roslint, ros-melodic-rostest, ros-melodic-sensor-msgs, ros-melodic-std-srvs, ros-melodic-tf2, ros-melodic-tf2-geometry-msgs, ros-melodic-tf2-ros, ros-melodic-trajectory-msgs, ros-melodic-trajectory-tracker, ros-melodic-trajectory-tracker-msgs
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-melodic-planner-cspace
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, ros-melodic-actionlib, ros-melodic-costmap-cspace, ros-melodic-costmap-cspace-msgs, ros-melodic-diagnostic-updater, ros-melodic-geometry-msgs, ros-melodic-move-base-msgs, ros-melodic-nav-msgs, ros-melodic-neonavigation-common, ros-melodic-planner-cspace-msgs (>= 0.7.0), ros-melodic-roscpp, ros-melodic-sensor-msgs, ros-melodic-std-srvs, ros-melodic-tf2, ros-melodic-tf2-geometry-msgs, ros-melodic-tf2-ros, ros-melodic-trajectory-msgs, ros-melodic-trajectory-tracker-msgs
+Description: 3-dof configuration space planner for mobile robot
