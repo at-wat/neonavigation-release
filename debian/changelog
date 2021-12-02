@@ -1,0 +1,248 @@
+ros-melodic-neonavigation-common (0.11.3-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 02 Dec 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.11.2-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 08 Nov 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.11.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Fri, 29 Oct 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.11.0-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 30 Aug 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.11-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 21 Jun 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.10-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 18 Mar 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.9-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 16 Mar 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.8-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Wed, 10 Mar 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.7-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sun, 07 Mar 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.6-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 28 Jan 2021 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.5-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 24 Dec 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.4-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 12 Nov 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.3-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 22 Oct 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.2-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Wed, 07 Oct 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Wed, 26 Aug 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.10.0-1bionic) bionic; urgency=high
+
+  * neonavigation_common: add unit tests (#525 <https://github.com/at-wat/neonavigation/issues/525>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 06 Aug 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.9.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 16 Jul 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.9.0-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 02 Jul 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.8-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 15 Jun 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.7-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Fri, 22 May 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.6-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Fri, 15 May 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.5-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 04 May 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.4-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 30 Apr 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.3-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sun, 26 Apr 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.2-1bionic) bionic; urgency=high
+
+  * Support Noetic (#461 <https://github.com/at-wat/neonavigation/issues/461>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 07 Apr 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 12 Mar 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.8.0-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Wed, 04 Mar 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.7.0-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 04 Feb 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.6.0-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sat, 18 Jan 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.5.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 06 Jan 2020 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.5.0-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 21 Oct 2019 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.4.3-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 10 Sep 2019 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.4.2-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Mon, 19 Aug 2019 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.4.1-1bionic) bionic; urgency=high
+
+  * Drop ROS Indigo and Ubuntu Trusty support (#310 <https://github.com/at-wat/neonavigation/issues/310>)
+  * Fix include directory priority (#308 <https://github.com/at-wat/neonavigation/issues/308>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 15 Aug 2019 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.4.0-1bionic) bionic; urgency=high
+
+  * Add LICENSE file (#270 <https://github.com/at-wat/neonavigation/issues/270>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 09 May 2019 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.3.1-1bionic) bionic; urgency=high
+
+  * Fix pointer alignment style (#233 <https://github.com/at-wat/neonavigation/issues/233>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 10 Jan 2019 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.2.3-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 19 Jul 2018 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.2.2-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Tue, 17 Jul 2018 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.2.1-1bionic) bionic; urgency=high
+
+
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Sat, 14 Jul 2018 00:00:00 -0000
+
+ros-melodic-neonavigation-common (0.2.0-1bionic) bionic; urgency=high
+
+  * Fix topic/service namespace model (#168 <https://github.com/at-wat/neonavigation/issues/168>)
+  * Contributors: Atsushi Watanabe
+
+ -- Atsushi Watanabe <atsushi.w@ieee.org>  Thu, 12 Jul 2018 00:00:00 -0000
+
+
