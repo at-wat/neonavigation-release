@@ -1,89 +1,92 @@
-# costmap_cspace package
+# neonavigation meta-package
 
-The topic names will be migrated to ROS recommended namespace model.
-Set `/neonavigation_compatible` parameter to `1` to use new topic names.
+![Build Status](https://github.com/at-wat/neonavigation/workflows/build/badge.svg)
+[![Codecov](https://codecov.io/gh/at-wat/neonavigation/branch/master/graph/badge.svg)](https://codecov.io/gh/at-wat/neonavigation)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-## costmap_3d
 
-costmap_3d node converts 2-D (x, y) OccupancyGrid to 2-D/3-DOF (x, y, yaw) configuration space based on given footprint.
+ROS meta-package for autonomous vehicle navigation.
 
-### single layer mode (simple version)
+## Important notices
 
-#### Subscribed topics
+- Topic/service namespace model is migrated to ROS recommended style.
+  See each package's README and runtime migration messages from the nodes.
 
-* map [nav_msgs::OccupancyGrid]
-* map_overlay [nav_msgs::OccupancyGrid]
+## Install
 
-#### Published topics
+- **Note 1: neonavigation_msgs meta-package is required to build neonavigation meta-package.**
+- **Note 2: neonavigation_rviz_plugins meta-package is required to visualize PathWithVelocity message used between planner_3d and trajectory_tracker.**
 
-* ~/costmap (new: costmap) [costmap_cspace_msgs::CSpace3D]
-* ~/costmap_update (new: costmap_update) [costmap_cspace_msgs::CSpace3DUpdate]
-* ~/footprint [geometry_msgs::PolygonStamped]
-* ~/debug [sensor_msgs::PointCloud]
+```shell
+# clone
+cd /path/to/your/catkin_ws/src
+git clone https://github.com/at-wat/neonavigation.git
+git clone https://github.com/at-wat/neonavigation_msgs.git
+git clone https://github.com/at-wat/neonavigation_rviz_plugins.git
 
-#### Parameters
+# build
+cd /path/to/your/catkin_ws
+rosdep install --from-paths src --ignore-src -y  # Install dependencies
+catkin_make -DCMAKE_BUILD_TYPE=Release  # Release build is recommended
+```
 
-* "ang_resolution" (int, default: 16)
-* "linear_expand" (double, default: 0.2f)
-* "linear_spread" (double, default: 0.5f)
-* "unknown_cost" (int, default: 0)
-* "overlay_mode" (string, default: std::string(""))
-* "footprint" (?, default: footprint_xml)
+## Demo
 
-### multiple layer mode
+A quick demonstration with a simple simulated robot is available.
 
-#### Subscribed topics
+```
+roslaunch neonavigation_launch demo.launch
+```
 
-* map [nav_msgs::OccupancyGrid]
-* **layer name** [nav_msgs::OccupancyGrid]: Subscribed topics are named according to the layers parameters
+![Rviz image of the demo](https://github.com/at-wat/neonavigation/blob/master/neonavigation_launch/doc/images/demo.png?raw=true)
 
-#### Published topics
+## Packages
 
-* ~/costmap (new: costmap) [costmap_cspace_msgs::CSpace3D]
-* ~/costmap_update (new: costmap_update) [costmap_cspace_msgs::CSpace3DUpdate]
-* ~/footprint [geometry_msgs::PolygonStamped]
-* ~/debug [sensor_msgs::PointCloud]
+### [costmap_cspace](costmap_cspace/README.md)
 
-#### Parameters
+3-DOF configuration space costmap handler.
 
-* "ang_resolution" (int, default: 16): for root layer
-* "linear_expand" (double, default: 0.2f): for root layer
-* "linear_spread" (double, default: 0.5f): for root layer
-* "footprint" (?, default: footprint_xml): for root layer
-* "static_layers": array of layer configurations
-* "layers": array of layer configurations
+### [planner_cspace](planner_cspace/README.md)
 
-Each layer configuration contains:
-* "name" (string) layer name
-* "type" (string) layer type name
-* "parameters" layer specific parameters
+2-D/3-DOF seamless global-local path and motion planner and serial joint collision avoidance.
 
-Available layer types and parameters are:
-- **Costmap3dLayerFootprint**: Configuration space costmap layer according to the given footprint.
-  - "linear_expand" (double)
-  - "linear_spread" (double)
-  - "footprint" (?, default: root layer's footprint)
-- **Costmap3dLayerPlain**: Costmap layer without considering footpring.
-  - "linear_expand" (double)
-  - "linear_spread" (double)
-- **Costmap3dLayerOutput**: Output generated costmap at this point. In most case, this is placed at the last layer.
-- **Costmap3dLayerStopPropagation**: Stop propagating parent layer's cost to the child. This can be used at the beginning of layer to ignore changes in static layers.
-- **Costmap3dLayerUnknownHandle**: Set unknown cell's cost.
-  - "unknown_cost" (int)
+### [safety_limiter](safety_limiter/README.md)
 
-See [example parameters](https://github.com/at-wat/neonavigation/blob/master/neonavigation_launch/config/navigate.yaml).
+Collision prevention control.
 
-----
-## laserscan_to_map
+### [trajectory_tracker](trajectory_tracker/README.md)
 
-stub
+Path following control and path handling. 
 
-----
-## pointcloud2_to_map
+### [map_organizer](map_organizer/README.md)
 
-stub
+Layered map handler.
 
-----
-## largemap_to_map
+### [track_odometry](track_odometry/README.md)
 
-stub
+Slip compensation for vehicle odometry.
+
+### [obj_to_pointcloud](obj_to_pointcloud/README.md)
+
+Obj surface data to pointcloud converter.
+
+### [neonavigation_launch](neonavigation_launch/README.md)
+
+Sample launch files.
+
+## References
+
+A. Watanabe, D. Endo, G. Yamauchi and K. Nagatani, "*Neonavigation meta-package: 2-D/3-DOF seamless global-local planner for ROS — Development and field test on the representative offshore oil plant,*" 2016 IEEE International Symposium on Safety, Security, and Rescue Robotics (SSRR), Lausanne, Switzerland, 2016, pp. 86-91.
+(doi: 10.1109/SSRR.2016.7784282)
+
+## Contributing
+
+*neonavigation meta-package* is developed under [GitHub flow](https://guides.github.com/introduction/flow/).
+Feel free to open new Issue and/or Pull Request.
+
+The code in this repository is following [ROS C++ Style Guide](https://wiki.ros.org/CppStyleGuide).
+A configuration file for clang-format is available at https://github.com/seqsense/ros_style/.
+
+## License
+
+*neonavigation meta-package* is available under BSD license.
