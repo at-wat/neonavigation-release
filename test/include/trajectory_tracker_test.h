@@ -31,10 +31,11 @@
 #define TRAJECTORY_TRACKER_TEST_H
 
 #include <algorithm>
+#include <iostream>
+#include <list>
 #include <memory>
 #include <string>
 #include <vector>
-#include <list>
 
 #include <boost/thread.hpp>
 
@@ -165,6 +166,7 @@ public:
           << "trajectory_tracker status timeout, status: "
           << (status_ ? std::to_string(static_cast<int>(status_->status)) : "none");
     }
+    ros::Duration(0.5).sleep();
   }
   void waitUntilStart(const std::function<void()> func = nullptr)
   {
@@ -327,5 +329,25 @@ public:
     return dynamic_reconfigure_client_->setConfiguration(config);
   }
 };
+
+namespace trajectory_tracker_msgs
+{
+std::ostream& operator<<(std::ostream& os, const TrajectoryTrackerStatus::ConstPtr& msg)
+{
+  if (!msg)
+  {
+    os << "nullptr";
+  }
+  else
+  {
+    os << "  header: " << msg->header.stamp << " " << msg->header.frame_id << std::endl
+       << "  distance_remains: " << msg->distance_remains << std::endl
+       << "  angle_remains: " << msg->angle_remains << std::endl
+       << "  status: " << msg->status << std::endl
+       << "  path_header: " << msg->path_header.stamp << " " << msg->header.frame_id;
+  }
+  return os;
+}
+}  // namespace trajectory_tracker_msgs
 
 #endif  // TRAJECTORY_TRACKER_TEST_H
