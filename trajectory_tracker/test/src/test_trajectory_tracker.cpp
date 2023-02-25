@@ -47,7 +47,15 @@ TEST_F(TrajectoryTrackerTest, StraightStop)
   const ros::Time start = ros::Time::now();
   while (ros::ok())
   {
-    ASSERT_LT(ros::Time::now() - start, ros::Duration(10.0));
+    if (ros::Time::now() > start + ros::Duration(10.0))
+    {
+      FAIL()
+          << "Timeout" << std::endl
+          << "Pos " << pos_ << std::endl
+          << "Yaw " << yaw_ << std::endl
+          << "Status " << std::endl
+          << status_ << std::endl;
+    }
 
     publishTransform();
     rate.sleep();
@@ -100,7 +108,16 @@ TEST_F(TrajectoryTrackerTest, StraightStopOvershoot)
     const ros::Time start = ros::Time::now();
     while (ros::ok())
     {
-      ASSERT_LT(ros::Time::now() - start, ros::Duration(10.0)) << info_message;
+      if (ros::Time::now() > start + ros::Duration(10.0))
+      {
+        FAIL()
+            << "Timeout" << std::endl
+            << "Pos " << pos_ << std::endl
+            << "Yaw " << yaw_ << std::endl
+            << "Status " << std::endl
+            << status_ << std::endl
+            << info_message;
+      }
 
       publishTransform();
       rate.sleep();
@@ -152,7 +169,16 @@ TEST_F(TrajectoryTrackerTest, StraightStopConvergence)
     const ros::Time start = ros::Time::now();
     while (ros::ok())
     {
-      ASSERT_LT(ros::Time::now() - start, ros::Duration(5.0 + path_length / vel)) << info_message;
+      if (ros::Time::now() > start + ros::Duration(5.0 + path_length / vel))
+      {
+        FAIL()
+            << "Timeout" << std::endl
+            << "Pos " << pos_ << std::endl
+            << "Yaw " << yaw_ << std::endl
+            << "Status " << std::endl
+            << status_ << std::endl
+            << info_message;
+      }
 
       publishTransform();
       rate.sleep();
@@ -200,7 +226,15 @@ TEST_F(TrajectoryTrackerTest, StraightVelocityChange)
   const ros::Time start = ros::Time::now();
   while (ros::ok())
   {
-    ASSERT_LT(ros::Time::now(), start + ros::Duration(10.0));
+    if (ros::Time::now() > start + ros::Duration(10.0))
+    {
+      FAIL()
+          << "Timeout" << std::endl
+          << "Pos " << pos_ << std::endl
+          << "Yaw " << yaw_ << std::endl
+          << "Status " << std::endl
+          << status_ << std::endl;
+    }
 
     publishTransform();
     rate.sleep();
@@ -260,7 +294,15 @@ TEST_F(TrajectoryTrackerTest, CurveFollow)
   const ros::Time start = ros::Time::now();
   while (ros::ok())
   {
-    ASSERT_LT(ros::Time::now() - start, ros::Duration(20.0));
+    if (ros::Time::now() > start + ros::Duration(20.0))
+    {
+      FAIL()
+          << "Timeout" << std::endl
+          << "Pos " << pos_ << std::endl
+          << "Yaw " << yaw_ << std::endl
+          << "Status " << std::endl
+          << status_ << std::endl;
+    }
 
     publishTransform();
     rate.sleep();
@@ -327,7 +369,16 @@ TEST_F(TrajectoryTrackerTest, InPlaceTurn)
         const ros::Time start = ros::Time::now();
         for (int i = 0; ros::ok(); ++i)
         {
-          ASSERT_LT(ros::Time::now() - start, ros::Duration(10.0)) << condition_name.str();
+          if (ros::Time::now() > start + ros::Duration(10.0))
+          {
+            FAIL()
+                << condition_name.str()
+                << "Timeout" << std::endl
+                << "Pos " << pos_ << std::endl
+                << "Yaw " << yaw_ << std::endl
+                << "Status " << std::endl
+                << status_ << std::endl;
+          }
 
           publishTransform();
           rate.sleep();
@@ -392,7 +443,15 @@ TEST_F(TrajectoryTrackerTest, SwitchBack)
   const ros::Time start = ros::Time::now();
   while (ros::ok())
   {
-    ASSERT_LT(ros::Time::now() - start, ros::Duration(10.0));
+    if (ros::Time::now() > start + ros::Duration(10.0))
+    {
+      FAIL()
+          << "Timeout" << std::endl
+          << "Pos " << pos_ << std::endl
+          << "Yaw " << yaw_ << std::endl
+          << "Status " << std::endl
+          << status_ << std::endl;
+    }
 
     publishTransform();
     rate.sleep();
@@ -444,9 +503,17 @@ TEST_F(TrajectoryTrackerTest, SwitchBackWithPathUpdate)
   int cnt_arrive_local_goal(0);
   ros::Rate rate(50);
   const ros::Time start = ros::Time::now();
-  while (ros::ok())
+  for (int i = 0; ros::ok(); i++)
   {
-    ASSERT_LT(ros::Time::now() - start, ros::Duration(15.0));
+    if (ros::Time::now() > start + ros::Duration(15.0))
+    {
+      FAIL()
+          << "Timeout" << std::endl
+          << "Pos " << pos_ << std::endl
+          << "Yaw " << yaw_ << std::endl
+          << "Status " << std::endl
+          << status_ << std::endl;
+    }
 
     publishTransform();
     rate.sleep();
@@ -457,11 +524,21 @@ TEST_F(TrajectoryTrackerTest, SwitchBackWithPathUpdate)
     if ((pos_local_goal - pos_).norm() < 0.1)
       cnt_arrive_local_goal++;
 
-    if (cnt_arrive_local_goal > 25)
-      publishPath(poses_second_half);
-    else
-      publishPath(poses);
+    if (i % 5)
+    {
+      // Republish path in 10Hz
+      if (cnt_arrive_local_goal > 25)
+      {
+        publishPath(poses_second_half);
+      }
+      else
+      {
+        publishPath(poses);
+      }
+    }
   }
+  ASSERT_GT(cnt_arrive_local_goal, 25)
+      << "failed to update path";
   for (int j = 0; j < 5; ++j)
   {
     for (int i = 0; i < 5; ++i)
@@ -492,7 +569,7 @@ void timeSource()
 
   ros::Publisher pub = nh.advertise<rosgraph_msgs::Clock>("clock", 1);
 
-  ros::WallRate rate(500.0);  // 500% speed
+  ros::WallRate rate(400.0);  // 400% speed
   ros::WallTime time = ros::WallTime::now();
   while (ros::ok())
   {
