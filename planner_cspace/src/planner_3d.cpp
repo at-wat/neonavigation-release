@@ -411,6 +411,7 @@ protected:
         return false;
       }
       status_.status = planner_cspace_msgs::PlannerStatus::DOING;
+      status_.header.stamp = ros::Time::now();
       pub_status_.publish(status_);
       diag_updater_.update();
     }
@@ -972,6 +973,8 @@ protected:
     hyst_updated_cells_.clear();
     has_hysteresis_map_ = false;
 
+    cm_updates_.clear(0);
+
     has_map_ = true;
 
     cm_rough_base_ = cm_rough_;
@@ -1436,6 +1439,7 @@ public:
         publishEmptyPath();
         previous_path.poses.clear();
       }
+      status_.header.stamp = now;
       pub_status_.publish(status_);
       diag_updater_.force_update();
 
