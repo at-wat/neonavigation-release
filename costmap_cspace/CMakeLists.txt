@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS ${CATKIN_DEPENDS})
 find_package(xmlrpcpp REQUIRED)
 catkin_package(
   INCLUDE_DIRS include
+  LIBRARIES costmap_3d_layers
   CATKIN_DEPENDS ${CATKIN_DEPENDS}
 )
 
@@ -27,15 +28,16 @@ catkin_package(
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include_directories(include ${catkin_INCLUDE_DIRS})
 
+include_directories(include ${catkin_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/include/costmap_cspace)
 
-add_executable(costmap_3d src/costmap_3d.cpp src/costmap_3d_layers.cpp)
-target_link_libraries(costmap_3d ${catkin_LIBRARIES})
+add_library(costmap_3d_layers src/costmap_3d_layers.cpp)
+target_link_libraries(costmap_3d_layers ${catkin_LIBRARIES})
+add_dependencies(costmap_3d_layers ${catkin_EXPORTED_TARGETS})
+
+add_executable(costmap_3d src/costmap_3d.cpp)
+target_link_libraries(costmap_3d costmap_3d_layers ${catkin_LIBRARIES})
 add_dependencies(costmap_3d ${catkin_EXPORTED_TARGETS})
-set_property(TARGET costmap_3d PROPERTY PUBLIC_HEADER
-  include/costmap_cspace/pointcloud_accumulator.h
-)
 
 add_executable(laserscan_to_map src/laserscan_to_map.cpp)
 target_link_libraries(laserscan_to_map ${catkin_LIBRARIES})
@@ -65,8 +67,12 @@ install(TARGETS
     largemap_to_map
     laserscan_to_map
     pointcloud2_to_map
+    costmap_3d_layers
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-  PUBLIC_HEADER DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
