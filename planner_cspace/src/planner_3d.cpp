@@ -73,12 +73,13 @@
 #include <planner_cspace/grid_astar.h>
 #include <planner_cspace/jump_detector.h>
 #include <planner_cspace/planner_3d/costmap_bbf.h>
+#include <planner_cspace/planner_3d/distance_map.h>
 #include <planner_cspace/planner_3d/grid_astar_model.h>
 #include <planner_cspace/planner_3d/grid_metric_converter.h>
 #include <planner_cspace/planner_3d/motion_cache.h>
 #include <planner_cspace/planner_3d/path_interpolator.h>
 #include <planner_cspace/planner_3d/rotation_cache.h>
-#include <planner_cspace/planner_3d/distance_map.h>
+#include <planner_cspace/planner_3d/start_pose_predictor.h>
 
 namespace planner_cspace
 {
@@ -101,6 +102,7 @@ protected:
   ros::Publisher pub_path_;
   ros::Publisher pub_path_velocity_;
   ros::Publisher pub_path_poses_;
+  ros::Publisher pub_preserved_path_poses_;
   ros::Publisher pub_hysteresis_map_;
   ros::Publisher pub_distance_map_;
   ros::Publisher pub_remembered_map_;
@@ -171,6 +173,7 @@ protected:
   bool use_path_with_velocity_;
   bool retain_last_error_status_;
   int num_cost_estim_task_;
+  bool keep_a_part_of_previous_path_;
 
   JumpDetector jump_;
   std::string robot_frame_;
@@ -217,6 +220,8 @@ protected:
   int prev_map_update_x_max_;
   int prev_map_update_y_min_;
   int prev_map_update_y_max_;
+  nav_msgs::Path previous_path_;
+  StartPosePredictor start_pose_predictor_;
 
   bool cbForget(std_srvs::EmptyRequest& req,
                 std_srvs::EmptyResponse& res)
@@ -360,7 +365,7 @@ protected:
 
     const std::list<Astar::Vecf> path_interpolated =
         model_->path_interpolator_.interpolate(path_grid, 0.5, 0.0);
-    grid_metric_converter::grid2MetricPath(map_info_, path_interpolated, path);
+    grid_metric_converter::appendGridPath2MetricPath(map_info_, path_interpolated, path);
 
     res.plan.header = map_header_;
     res.plan.poses.resize(path.poses.size());
@@ -685,16 +690,7 @@ protected:
     nav_msgs::Path path;
     path.header.frame_id = robot_frame_;
     path.header.stamp = ros::Time::now();
-    if (use_path_with_velocity_)
-    {
-      pub_path_velocity_.publish(
-          trajectory_tracker_msgs::toPathWithVelocity(
-              path, std::numeric_limits<double>::quiet_NaN()));
-    }
-    else
-    {
-      pub_path_.publish(path);
-    }
+    publishPath(path);
   }
   void publishFinishPath()
   {
@@ -708,7 +704,10 @@ protected:
       path.poses[0].pose = goal_raw_.pose;
     else
       path.poses[0].pose = goal_.pose;
-
+    publishPath(path);
+  }
+  void publishPath(const nav_msgs::Path& path)
+  {
     if (use_path_with_velocity_)
     {
       pub_path_velocity_.publish(
@@ -719,6 +718,7 @@ protected:
     {
       pub_path_.publish(path);
     }
+    previous_path_ = path;
   }
 
   void cbMapUpdate(const costmap_cspace_msgs::CSpace3DUpdate::ConstPtr msg)
@@ -1125,8 +1125,8 @@ public:
           nh_, "path",
           pnh_, "path", 1, true);
     }
-    pub_path_poses_ = pnh_.advertise<geometry_msgs::PoseArray>(
-        "path_poses", 1, true);
+    pub_path_poses_ = pnh_.advertise<geometry_msgs::PoseArray>("path_poses", 1, true);
+    pub_preserved_path_poses_ = pnh_.advertise<nav_msgs::Path>("preserved_path_poses", 1, true);
 
     pnh_.param("freq", freq_, 4.0f);
     pnh_.param("freq_min", freq_min_, 2.0f);
@@ -1297,6 +1297,8 @@ public:
     cc_.hysteresis_max_dist_ = config.hysteresis_max_dist;
     cc_.hysteresis_expand_ = config.hysteresis_expand;
     cc_.weight_hysteresis_ = config.weight_hysteresis;
+    cc_.weight_costmap_turn_heuristics_ = config.weight_costmap_turn_heuristics;
+    cc_.turn_penalty_cost_threshold_ = config.turn_penalty_cost_threshold;
 
     goal_tolerance_lin_f_ = config.goal_tolerance_lin;
     goal_tolerance_ang_f_ = config.goal_tolerance_ang;
@@ -1343,6 +1345,24 @@ public:
           };
       cost_estim_cache_.init(model_, dmp);
     }
+
+    keep_a_part_of_previous_path_ = config.keep_a_part_of_previous_path;
+    StartPosePredictor::Config start_pose_predictor_config;
+    start_pose_predictor_config.lin_vel_ = config.max_vel;
+    start_pose_predictor_config.ang_vel_ = config.max_ang_vel;
+    start_pose_predictor_config.dist_stop_ = config.dist_stop_to_previous_path;
+    start_pose_predictor_config.prediction_sec_ = 1.0 / freq_;
+    start_pose_predictor_config.switch_back_prediction_sec_ = config.sw_wait;
+    if (keep_a_part_of_previous_path_)
+    {
+      // No need to wait additional times
+      sw_wait_ = 1.0 / freq_;
+    }
+    else
+    {
+      sw_wait_ = config.sw_wait;
+    }
+    start_pose_predictor_.setConfig(start_pose_predictor_config);
   }
 
   GridAstarModel3D::Vec pathPose2Grid(const geometry_msgs::PoseStamped& pose) const
@@ -1354,7 +1374,7 @@ public:
     return grid_vec;
   }
 
-  void waitUntil(const ros::Time& next_replan_time, const nav_msgs::Path& previous_path)
+  void waitUntil(const ros::Time& next_replan_time)
   {
     while (ros::ok())
     {
@@ -1373,9 +1393,9 @@ public:
           return;
         }
 
-        if (costmap_updated && previous_path.poses.size() > 1)
+        if (costmap_updated && previous_path_.poses.size() > 1)
         {
-          for (const auto& path_pose : previous_path.poses)
+          for (const auto& path_pose : previous_path_.poses)
           {
             if (cm_[pathPose2Grid(path_pose)] == 100)
             {
@@ -1414,11 +1434,10 @@ public:
     ROS_DEBUG("Initialized");
 
     ros::Time next_replan_time = ros::Time::now();
-    nav_msgs::Path previous_path;
 
     while (ros::ok())
     {
-      waitUntil(next_replan_time, previous_path);
+      waitUntil(next_replan_time);
 
       const ros::Time now = ros::Time::now();
       next_replan_time = now;
@@ -1442,7 +1461,6 @@ public:
                             last_costmap_.toSec());
           status_.error = planner_cspace_msgs::PlannerStatus::DATA_MISSING;
           publishEmptyPath();
-          previous_path.poses.clear();
         }
         else
         {
@@ -1520,7 +1538,6 @@ public:
             has_goal_ = false;
 
             publishEmptyPath();
-            previous_path.poses.clear();
             next_replan_time += ros::Duration(1.0 / freq_);
             ROS_ERROR("Exceeded max_retry_num:%d", max_retry_num_);
 
@@ -1553,7 +1570,6 @@ public:
           if (skip_path_planning)
           {
             publishEmptyPath();
-            previous_path.poses.clear();
           }
           else
           {
@@ -1561,18 +1577,8 @@ public:
             path.header = map_header_;
             path.header.stamp = now;
             makePlan(start_.pose, goal_.pose, path, true);
-            if (use_path_with_velocity_)
-            {
-              // NaN velocity means that don't care the velocity
-              pub_path_velocity_.publish(
-                  trajectory_tracker_msgs::toPathWithVelocity(path, std::numeric_limits<double>::quiet_NaN()));
-            }
-            else
-            {
-              pub_path_.publish(path);
-            }
-            previous_path = path;
-            if (sw_wait_ > 0.0)
+            publishPath(path);
+            if ((sw_wait_ > 0.0) && !keep_a_part_of_previous_path_)
             {
               const int sw_index = getSwitchIndex(path);
               is_path_switchback = (sw_index >= 0);
@@ -1587,7 +1593,6 @@ public:
         if (!retain_last_error_status_)
           status_.error = planner_cspace_msgs::PlannerStatus::GOING_WELL;
         publishEmptyPath();
-        previous_path.poses.clear();
       }
       status_.header.stamp = now;
       pub_status_.publish(status_);
@@ -1623,38 +1628,98 @@ public:
   }
 
 protected:
-  bool makePlan(const geometry_msgs::Pose& gs, const geometry_msgs::Pose& ge,
-                nav_msgs::Path& path, bool hyst)
+  void publishStartAndGoalMarkers(const Astar::Vec& start_grid, Astar::Vec& end_grid)
   {
-    Astar::Vec e;
-    grid_metric_converter::metric2Grid(
-        map_info_, e[0], e[1], e[2],
-        ge.position.x, ge.position.y, tf2::getYaw(ge.orientation));
-    e.cycleUnsigned(map_info_.angle);
+    geometry_msgs::PoseStamped p;
+    p.header = map_header_;
+    float x, y, yaw;
+    grid_metric_converter::grid2Metric(map_info_, end_grid[0], end_grid[1], end_grid[2], x, y, yaw);
+    p.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
+    p.pose.position.x = x;
+    p.pose.position.y = y;
+    pub_end_.publish(p);
+    grid_metric_converter::grid2Metric(map_info_, start_grid[0], start_grid[1], start_grid[2], x, y, yaw);
+    p.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
+    p.pose.position.x = x;
+    p.pose.position.y = y;
+    pub_start_.publish(p);
+  }
+
+  bool isPathFinishing(const Astar::Vec& start_grid, const Astar::Vec& end_grid) const
+  {
+    int g_tolerance_lin, g_tolerance_ang;
+    if (act_tolerant_->isActive())
+    {
+      g_tolerance_lin = std::lround(goal_tolerant_->goal_tolerance_lin / map_info_.linear_resolution);
+      g_tolerance_ang = std::lround(goal_tolerant_->goal_tolerance_ang / map_info_.angular_resolution);
+    }
+    else
+    {
+      g_tolerance_lin = goal_tolerance_lin_;
+      g_tolerance_ang = goal_tolerance_ang_;
+    }
+    Astar::Vec remain = start_grid - end_grid;
+    remain.cycle(map_info_.angle);
+    return (remain.sqlen() <= g_tolerance_lin * g_tolerance_lin && std::abs(remain[2]) <= g_tolerance_ang);
+  }
+
+  enum class StartPoseStatus
+  {
+    START_OCCUPIED,
+    FINISHING,
+    NORMAL,
+  };
+  StartPoseStatus buildStartPoses(const geometry_msgs::Pose& start_metric, const geometry_msgs::Pose& end_metric,
+                                  std::vector<Astar::VecWithCost>& result_start_poses)
+  {
+    result_start_poses.clear();
+    start_pose_predictor_.clear();
 
     Astar::Vecf sf;
     grid_metric_converter::metric2Grid(
         map_info_, sf[0], sf[1], sf[2],
-        gs.position.x, gs.position.y, tf2::getYaw(gs.orientation));
-    Astar::Vec s(static_cast<int>(std::floor(sf[0])), static_cast<int>(std::floor(sf[1])), std::lround(sf[2]));
-    s.cycleUnsigned(map_info_.angle);
-    if (!cm_.validate(s, range_))
+        start_metric.position.x, start_metric.position.y, tf2::getYaw(start_metric.orientation));
+    Astar::Vec start_grid(static_cast<int>(std::floor(sf[0])), static_cast<int>(std::floor(sf[1])), std::lround(sf[2]));
+    start_grid.cycleUnsigned(map_info_.angle);
+
+    Astar::Vec end_grid;
+    grid_metric_converter::metric2Grid(
+        map_info_, end_grid[0], end_grid[1], end_grid[2],
+        end_metric.position.x, end_metric.position.y, tf2::getYaw(end_metric.orientation));
+    end_grid.cycleUnsigned(map_info_.angle);
+
+    if (!cm_.validate(start_grid, range_))
     {
       ROS_ERROR("You are on the edge of the world.");
-      status_.error = planner_cspace_msgs::PlannerStatus::IN_ROCK;
-      return false;
+      return StartPoseStatus::START_OCCUPIED;
     }
 
-    std::vector<Astar::VecWithCost> starts;
+    if (keep_a_part_of_previous_path_ && !previous_path_.poses.empty())
+    {
+      Astar::Vec expected_start_grid;
+      if (start_pose_predictor_.process(start_metric, cm_, map_info_, previous_path_, expected_start_grid))
+      {
+        ROS_DEBUG("Start grid is moved to (%d, %d, %d) from (%d, %d, %d) by start pose predictor.",
+                  expected_start_grid[0], expected_start_grid[1], expected_start_grid[2],
+                  start_grid[0], start_grid[1], start_grid[2]);
+        result_start_poses.push_back(Astar::VecWithCost(expected_start_grid));
+        return isPathFinishing(start_grid, end_grid) ? StartPoseStatus::FINISHING : StartPoseStatus::NORMAL;
+      }
+      else
+      {
+        return StartPoseStatus::START_OCCUPIED;
+      }
+    }
+
     if (antialias_start_)
     {
-      const int x_cand[] = {0, ((sf[0] - s[0]) < 0.5 ? -1 : 1)};
-      const int y_cand[] = {0, ((sf[1] - s[1]) < 0.5 ? -1 : 1)};
+      const int x_cand[] = {0, ((sf[0] - start_grid[0]) < 0.5 ? -1 : 1)};
+      const int y_cand[] = {0, ((sf[1] - start_grid[1]) < 0.5 ? -1 : 1)};
       for (const int x : x_cand)
       {
         for (const int y : y_cand)
         {
-          const Astar::Vec p = s + Astar::Vec(x, y, 0);
+          const Astar::Vec p = start_grid + Astar::Vec(x, y, 0);
           if (!cm_.validate(p, range_))
             continue;
 
@@ -1664,43 +1729,62 @@ protected:
           if (cm_[p] > 99)
             continue;
 
-          starts.push_back(Astar::VecWithCost(p));
+          const Astar::Vecf diff = Astar::Vecf(p[0] + 0.5f, p[1] + 0.5f, 0.0f) - sf;
+          const double cost = std::hypot(diff[0] * ec_[0], diff[1] * ec_[0]) +
+                              cm_[p] * cc_.weight_costmap_ / 100.0;
+          result_start_poses.push_back(Astar::VecWithCost(p, cost));
         }
       }
     }
-    else
+    else if (cm_[start_grid] < 100)
     {
-      if (cm_[s] < 100)
+      result_start_poses.push_back(Astar::VecWithCost(start_grid));
+    }
+    if (result_start_poses.empty())
+    {
+      const Astar::Vec original_start_grid = start_grid;
+      if (!searchAvailablePos(cm_, start_grid, tolerance_range_, tolerance_angle_))
       {
-        starts.push_back(Astar::VecWithCost(s));
+        ROS_WARN("Oops! You are in Rock!");
+        return StartPoseStatus::START_OCCUPIED;
+      }
+      ROS_INFO("Start grid is moved to (%d, %d, %d) from (%d, %d, %d) by relocation.",
+               start_grid[0], start_grid[1], start_grid[2],
+               original_start_grid[0], original_start_grid[1], original_start_grid[2]);
+      result_start_poses.push_back(Astar::VecWithCost(start_grid));
+    }
+    for (const Astar::VecWithCost& s : result_start_poses)
+    {
+      if (isPathFinishing(s.v_, end_grid))
+      {
+        return StartPoseStatus::FINISHING;
       }
     }
-    for (Astar::VecWithCost& s : starts)
+    return StartPoseStatus::NORMAL;
+  }
+
+  bool makePlan(const geometry_msgs::Pose& start_metric, const geometry_msgs::Pose& end_metric,
+                nav_msgs::Path& path, bool hyst)
+  {
+    Astar::Vec start_grid;
+    grid_metric_converter::metric2Grid(
+        map_info_, start_grid[0], start_grid[1], start_grid[2],
+        start_metric.position.x, start_metric.position.y, tf2::getYaw(start_metric.orientation));
+    start_grid.cycleUnsigned(map_info_.angle);
+    Astar::Vec end_grid;
+    grid_metric_converter::metric2Grid(
+        map_info_, end_grid[0], end_grid[1], end_grid[2],
+        end_metric.position.x, end_metric.position.y, tf2::getYaw(end_metric.orientation));
+    end_grid.cycleUnsigned(map_info_.angle);
+    publishStartAndGoalMarkers(start_grid, end_grid);
+
+    std::vector<Astar::VecWithCost> starts;
+    switch (buildStartPoses(start_metric, end_metric, starts))
     {
-      const Astar::Vecf diff =
-          Astar::Vecf(s.v_[0] + 0.5f, s.v_[1] + 0.5f, 0.0f) - sf;
-      s.c_ = std::hypot(diff[0] * ec_[0], diff[1] * ec_[0]);
-      s.c_ += cm_[s.v_] * cc_.weight_costmap_ / 100.0;
-
-      // Check if arrived to the goal
-      Astar::Vec remain = s.v_ - e;
-      remain.cycle(map_info_.angle);
-
-      int g_tolerance_lin, g_tolerance_ang;
-      if (act_tolerant_->isActive())
-      {
-        g_tolerance_lin = std::lround(goal_tolerant_->goal_tolerance_lin / map_info_.linear_resolution);
-        g_tolerance_ang = std::lround(goal_tolerant_->goal_tolerance_ang / map_info_.angular_resolution);
-      }
-      else
-      {
-        g_tolerance_lin = goal_tolerance_lin_;
-        g_tolerance_ang = goal_tolerance_ang_;
-      }
-
-      if (remain.sqlen() <= g_tolerance_lin * g_tolerance_lin &&
-          std::abs(remain[2]) <= g_tolerance_ang)
-      {
+      case StartPoseStatus::START_OCCUPIED:
+        status_.error = planner_cspace_msgs::PlannerStatus::IN_ROCK;
+        return false;
+      case StartPoseStatus::FINISHING:
         if (escaping_)
         {
           goal_ = goal_raw_;
@@ -1709,64 +1793,43 @@ protected:
           ROS_INFO("Escaped");
           return true;
         }
+        if (act_tolerant_->isActive() && goal_tolerant_->continuous_movement_mode)
+        {
+          ROS_INFO("Robot reached near the goal.");
+          act_tolerant_->setSucceeded(planner_cspace_msgs::MoveWithToleranceResult(),
+                                      "Goal reached (Continuous movement mode).");
+          goal_tolerant_ = nullptr;
+        }
         else
         {
-          if (act_tolerant_->isActive() && goal_tolerant_->continuous_movement_mode)
-          {
-            ROS_INFO("Robot reached near the goal.");
-            act_tolerant_->setSucceeded(planner_cspace_msgs::MoveWithToleranceResult(),
-                                        "Goal reached (Continuous movement mode).");
-            goal_tolerant_ = nullptr;
-          }
-          else
-          {
-            status_.status = planner_cspace_msgs::PlannerStatus::FINISHING;
-            publishFinishPath();
-            ROS_INFO("Path plan finishing");
-            return true;
-          }
+          status_.status = planner_cspace_msgs::PlannerStatus::FINISHING;
+          publishFinishPath();
+          ROS_INFO("Path plan finishing");
+          return true;
         }
-      }
+        break;
+      default:
+        break;
     }
 
-    geometry_msgs::PoseStamped p;
-    p.header = map_header_;
-    float x, y, yaw;
-    grid_metric_converter::grid2Metric(map_info_, e[0], e[1], e[2], x, y, yaw);
-    p.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
-    p.pose.position.x = x;
-    p.pose.position.y = y;
-    pub_end_.publish(p);
-
-    if (starts.size() == 0)
-    {
-      if (!searchAvailablePos(cm_, s, tolerance_range_, tolerance_angle_))
-      {
-        ROS_WARN("Oops! You are in Rock!");
-        status_.error = planner_cspace_msgs::PlannerStatus::IN_ROCK;
-        return false;
-      }
-      ROS_INFO("Start moved");
-      starts.push_back(Astar::VecWithCost(s));
-    }
-    const Astar::Vec s_rough(s[0], s[1], 0);
-
+    const float initial_2dof_cost = cost_estim_cache_[Astar::Vec(start_grid[0], start_grid[1], 0)];
     // If goal gets occupied, cost_estim_cache_ is not updated to reduce
     // computational cost for clearing huge map. In this case, cm_[e] is 100.
-    if (cost_estim_cache_[s_rough] == std::numeric_limits<float>::max() || cm_[e] >= 100)
+    if (initial_2dof_cost == std::numeric_limits<float>::max() || cm_[end_grid] >= 100)
     {
       status_.error = planner_cspace_msgs::PlannerStatus::PATH_NOT_FOUND;
+      start_pose_predictor_.clear();
       ROS_WARN("Goal unreachable.");
       if (!escaping_ && temporary_escape_)
       {
-        e = s;
-        if (searchAvailablePos(cm_, e, esc_range_, esc_angle_, 50, esc_range_ / 2))
+        end_grid = start_grid;
+        if (searchAvailablePos(cm_, end_grid, esc_range_, esc_angle_, 50, esc_range_ / 2))
         {
           escaping_ = true;
           ROS_INFO("Temporary goal (%d, %d, %d)",
-                   e[0], e[1], e[2]);
+                   end_grid[0], end_grid[1], end_grid[2]);
           float x, y, yaw;
-          grid_metric_converter::grid2Metric(map_info_, e[0], e[1], e[2], x, y, yaw);
+          grid_metric_converter::grid2Metric(map_info_, end_grid[0], end_grid[1], end_grid[2], x, y, yaw);
           goal_.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
           goal_.pose.position.x = x;
           goal_.pose.position.y = y;
@@ -1778,19 +1841,10 @@ protected:
       return false;
     }
 
-    grid_metric_converter::grid2Metric(map_info_, s[0], s[1], s[2], x, y, yaw);
-    p.pose.orientation = tf2::toMsg(tf2::Quaternion(tf2::Vector3(0.0, 0.0, 1.0), yaw));
-    p.pose.position.x = x;
-    p.pose.position.y = y;
-    pub_start_.publish(p);
-
-    const float range_limit = cost_estim_cache_[s_rough] - (local_range_ + range_) * ec_[0];
-
+    const float range_limit = initial_2dof_cost - (local_range_ + range_) * ec_[0];
     const auto ts = boost::chrono::high_resolution_clock::now();
-    // ROS_INFO("Planning from (%d, %d, %d) to (%d, %d, %d)",
-    //   s[0], s[1], s[2], e[0], e[1], e[2]);
-
-    const auto cb_progress = [this, ts, s, e](const std::list<Astar::Vec>& path_grid, const SearchStats& stats) -> bool
+    const auto cb_progress =
+        [this, ts, start_grid, end_grid](const std::list<Astar::Vec>& path_grid, const SearchStats& stats) -> bool
     {
       const auto tnow = boost::chrono::high_resolution_clock::now();
       const auto tdiff = boost::chrono::duration<float>(tnow - ts).count();
@@ -1805,7 +1859,7 @@ protected:
             "num_search_queue=%lu, "
             "num_prev_updates=%lu, "
             "num_total_updates=%lu, ",
-            s[0], s[1], s[2], e[0], e[1], e[2], tdiff,
+            start_grid[0], start_grid[1], start_grid[2], end_grid[0], end_grid[1], end_grid[2], tdiff,
             stats.num_loop, stats.num_search_queue, stats.num_prev_updates, stats.num_total_updates);
         return false;
       }
@@ -1815,12 +1869,23 @@ protected:
 
     model_->enableHysteresis(hyst && has_hysteresis_map_);
     std::list<Astar::Vec> path_grid;
-    if (!as_.search(starts, e, path_grid,
-                    model_,
-                    cb_progress,
-                    range_limit,
-                    1.0f / freq_min_,
-                    find_best_))
+    bool is_goal_same_as_start = false;
+    for (const auto s : starts)
+    {
+      if (s.v_ == end_grid)
+      {
+        ROS_DEBUG("The start grid is the same as the end grid. Path planning skipped.");
+        path_grid.push_back(end_grid);
+        is_goal_same_as_start = true;
+        break;
+      }
+    }
+    if (!is_goal_same_as_start && !as_.search(starts, end_grid, path_grid,
+                                              model_,
+                                              cb_progress,
+                                              range_limit,
+                                              1.0f / freq_min_,
+                                              find_best_))
     {
       ROS_WARN("Path plan failed (goal unreachable)");
       status_.error = planner_cspace_msgs::PlannerStatus::PATH_NOT_FOUND;
@@ -1849,10 +1914,14 @@ protected:
       poses.poses.push_back(pose);
     }
     pub_path_poses_.publish(poses);
-
+    if (!start_pose_predictor_.getPreservedPath().poses.empty())
+    {
+      pub_preserved_path_poses_.publish(start_pose_predictor_.getPreservedPath());
+    }
     const std::list<Astar::Vecf> path_interpolated =
         model_->path_interpolator_.interpolate(path_grid, 0.5, local_range_);
-    grid_metric_converter::grid2MetricPath(map_info_, path_interpolated, path);
+    path.poses = start_pose_predictor_.getPreservedPath().poses;
+    grid_metric_converter::appendGridPath2MetricPath(map_info_, path_interpolated, path);
 
     if (hyst)
     {
