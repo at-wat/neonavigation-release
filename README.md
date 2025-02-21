@@ -1,92 +1,171 @@
-# neonavigation meta-package
+# trajectory_tracker package
 
-![Build Status](https://github.com/at-wat/neonavigation/workflows/build/badge.svg)
-[![Codecov](https://codecov.io/gh/at-wat/neonavigation/branch/master/graph/badge.svg)](https://codecov.io/gh/at-wat/neonavigation)
-[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+The topic names will be migrated to ROS recommended namespace model.
+Set `/neonavigation_compatible` parameter to `1` to use new topic names.
+
+## trajectory_tracker
+
+trajectory_tracker node controls vehicle velocity to follow given path.
+
+### Subscribed topics
+
+* ~/path (new: path) [nav_msgs::Path]
+* ~/speed (new: speed) [std_msgs::Float32]
+* /tf
+* /odom [nav_msgs::Odometry] (Optional: this topic is subscribed only when "use_odom" option is true)
 
 
-ROS meta-package for autonomous vehicle navigation.
+### Published topics
 
-## Important notices
+* ~/cmd_vel (new: cmd_vel) [geometry_msgs::Twist]
+* ~/status [trajectory_tracker_msgs::TrajectoryTrackerStatus]
+* ~/tracking [geometry_msgs::PoseStamped]
 
-- Topic/service namespace model is migrated to ROS recommended style.
-  See each package's README and runtime migration messages from the nodes.
+### Services
 
-## Install
 
-- **Note 1: neonavigation_msgs meta-package is required to build neonavigation meta-package.**
-- **Note 2: neonavigation_rviz_plugins meta-package is required to visualize PathWithVelocity message used between planner_3d and trajectory_tracker.**
+### Called services
 
-```shell
-# clone
-cd /path/to/your/catkin_ws/src
-git clone https://github.com/at-wat/neonavigation.git
-git clone https://github.com/at-wat/neonavigation_msgs.git
-git clone https://github.com/at-wat/neonavigation_rviz_plugins.git
 
-# build
-cd /path/to/your/catkin_ws
-rosdep install --from-paths src --ignore-src -y  # Install dependencies
-catkin_make -DCMAKE_BUILD_TYPE=Release  # Release build is recommended
-```
+### Parameters
 
-## Demo
+* "frame_robot" (string, default: std::string("base_link"))
+* "path" **deprecated** (string, default: std::string("path"))
+* "cmd_vel" **deprecated** (string, default: std::string("cmd_vel"))
+* "hz" (double, default: 50.0)
+* "look_forward" (double, default: 0.5)
+* "curv_forward" (double, default: 0.5)
+* "k_dist" (double, default: 1.0)
+* "k_ang" (double, default: 1.0)
+* "k_avel" (double, default: 1.0)
+* "gain_at_vel" (double, default: 0.0)
+  > compensate k_ang according to the current linear velocity to keep convergence characteristic at the linear velocity, specified by this parameter, if `gain_at_vel != 0`
+* "dist_lim" (double, default: 0.5)
+* "dist_stop" (double, default: 2.0)
+* "rotate_ang" (?, default: M_PI / 4)
+* "max_vel" (double, default: 0.5)
+* "max_angvel" (double, default: 1.0)
+* "max_acc" (double, default: 1.0)
+* "max_angacc" (double, default: 2.0)
+* "acc_toc_factor" (double, default: 0.9)
+  > decrease max_acc by this factor in time optimal control to reduce vibration due to control delay.
+* "angacc_toc_factor" (double, default: 0.9)
+  > decrease max_angacc by this factor in time optimal control to reduce vibration due to control delay. This parameter is valid when "use_time_optimal_control" is true.
+* "path_step" (int, default: 1)
+* "goal_tolerance_dist" (double, default: 0.2)
+* "goal_tolerance_ang" (double, default: 0.1)
+* "stop_tolerance_dist" (double, default: 0.1)
+* "stop_tolerance_ang" (double, default: 0.05)
+* "no_position_control_dist" (double, default: 0.0)
+* "min_tracking_path" (?, default: noPosCntlDist)
+* "allow_backward" (bool, default: true)
+* "limit_vel_by_avel" (bool, default: false)
+* "check_old_path" (bool, default: false)
+* "use_odom" (bool, default: false)
+  > When `use_odom` is false, trajectory_tracker publishes command velocities at a constant rate specified in "hz" option. When `use_odom` is true, it publishes command velocities just after odometry is updated. "hz" option is ignored in this mode.
+* "predict_odom" (bool, default: true)
+  > If true, predicted coordinates of the robot at the present timestamp are used. This parameter is valid when "use_odom" is true.
+* "odom_timeout_sec" (double, default: 0.1)
+  > Robot will be stopped after the duration specified in this parameter has passed since the last odometry was received. This parameter is valid when "use_odom" is true.
+* "use_time_optimal_control" (bool, default: True)
+  > If true, time optimal control mode is used during turning in place. Otherwise, the same algorithm used for path tracking is used.
+* "time_optimal_control_future_gain" (double, default: 1.5)
+  > A gain to look ahead to robot's angle used in time optimal control. This parameter is valid when "use_time_optimal_control" is true. 
+* "k_ang_rotation" (double, default: 1.0)
+  > "k_ang" value used during turning in place. This parameter is valid when "use_time_optimal_control" is false.
+* "k_avel_rotation" (double, default: 1.0)
+  > "k_avvel" value used during turning in place. This parameter is valid when "use_time_optimal_control" is false.
 
-A quick demonstration with a simple simulated robot is available.
+----
 
-```
-roslaunch neonavigation_launch demo.launch
-```
+## trajectory_recorder
 
-![Rviz image of the demo](https://github.com/at-wat/neonavigation/blob/master/neonavigation_launch/doc/images/demo.png?raw=true)
+trajectory_recorder node generates Path message from TF.
 
-## Packages
+### Subscribed topics
 
-### [costmap_cspace](costmap_cspace/README.md)
+* /tf
 
-3-DOF configuration space costmap handler.
+### Published topics
 
-### [planner_cspace](planner_cspace/README.md)
+* ~/recpath (new: path) [nav_msgs::Path]
 
-2-D/3-DOF seamless global-local path and motion planner and serial joint collision avoidance.
+### Services
 
-### [safety_limiter](safety_limiter/README.md)
 
-Collision prevention control.
+### Called services
 
-### [trajectory_tracker](trajectory_tracker/README.md)
 
-Path following control and path handling. 
+### Parameters
 
-### [map_organizer](map_organizer/README.md)
+* "frame_robot" (string, default: std::string("base_link"))
+* "frame_global" (string, default: std::string("map"))
+* "path" (string, default: std::string("recpath"))
+* "dist_interval" (double, default: 0.3)
+* "ang_interval" (double, default: 1.0)
 
-Layered map handler.
+----
 
-### [track_odometry](track_odometry/README.md)
+## trajectory_saver
 
-Slip compensation for vehicle odometry.
+trajectory_saver node saves Path message to file.
 
-### [obj_to_pointcloud](obj_to_pointcloud/README.md)
+### Subscribed topics
 
-Obj surface data to pointcloud converter.
+* ~/recpath (new: path) [nav_msgs::Path]
+* /tf
 
-### [neonavigation_launch](neonavigation_launch/README.md)
+### Published topics
 
-Sample launch files.
 
-## References
+### Services
 
-A. Watanabe, D. Endo, G. Yamauchi and K. Nagatani, "*Neonavigation meta-package: 2-D/3-DOF seamless global-local planner for ROS — Development and field test on the representative offshore oil plant,*" 2016 IEEE International Symposium on Safety, Security, and Rescue Robotics (SSRR), Lausanne, Switzerland, 2016, pp. 86-91.
-(doi: 10.1109/SSRR.2016.7784282)
 
-## Contributing
+### Called services
 
-*neonavigation meta-package* is developed under [GitHub flow](https://guides.github.com/introduction/flow/).
-Feel free to open new Issue and/or Pull Request.
 
-The code in this repository is following [ROS C++ Style Guide](https://wiki.ros.org/CppStyleGuide).
-A configuration file for clang-format is available at https://github.com/seqsense/ros_style/.
+### Parameters
 
-## License
+* "path" **deprecated** (string, default: std::string("recpath"))
+* "file" (string, default: std::string("a.path"))
 
-*neonavigation meta-package* is available under BSD license.
+----
+
+## trajectory_server
+
+trajectory_server node loads Path from file and publishes it.
+
+### Subscribed topics
+
+* /tf
+
+### Published topics
+
+* ~/path (new: path) [nav_msgs::Path]
+* ~/status [trajectory_tracker_msgs::TrajectoryServerStatus]
+
+### Services
+
+* ~/ChangePath (new: change_path) [trajectory_tracker_msgs::ChangePath]
+
+### Called services
+
+
+### Parameters
+
+* "path" **deprecated** (string, default: std::string("path"))
+* "file" (string, default: std::string("a.path"))
+* "hz" (?, default: double(5))
+* "filter_step" (double, default: 0.0)
+
+----
+
+
+# Acknowledgement
+
+This research was supported by a contract with the Ministry of Internal Affairs and Communications entitled, 'Novel and innovative R&D making use of brain structures'
+
+
+This software was implemented to accomplish the above research.
+Original idea of the implemented control scheme was published on:  
+S. Iida, S. Yuta, "Vehicle command system and trajectory control for autonomous mobile robots," in *Proceedings of the 1991 IEEE/RSJ International Workshop on Intelligent Robots and Systems (IROS)*, 1991, pp. 212-217.
