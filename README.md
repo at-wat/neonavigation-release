@@ -1,3 +1,37 @@
+## neonavigation (noetic) - 0.18.0-1
+
+The packages in the `neonavigation` repository were released into the `noetic` distro by running `/usr/bin/bloom-release -y --no-web --ros-distro noetic --override-release-repository-push-url https://github.com/at-wat/neonavigation-release.git --debug neonavigation` on `Tue, 13 May 2025 03:07:54 -0000`
+
+These packages were released:
+- `costmap_cspace`
+- `joystick_interrupt`
+- `map_organizer`
+- `neonavigation`
+- `neonavigation_common`
+- `neonavigation_launch`
+- `obj_to_pointcloud`
+- `planner_cspace`
+- `safety_limiter`
+- `track_odometry`
+- `trajectory_tracker`
+
+Version of package(s) in repository `neonavigation`:
+
+- upstream repository: https://github.com/at-wat/neonavigation.git
+- release repository: https://github.com/at-wat/neonavigation-release.git
+- rosdistro version: `0.17.7-1`
+- old version: `0.17.7-1`
+- new version: `0.18.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.11.2`
+- catkin_pkg version: `1.0.0`
+- rosdep version: `0.25.1`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## neonavigation (noetic) - 0.17.7-1
 
 The packages in the `neonavigation` repository were released into the `noetic` distro by running `/usr/bin/bloom-release -y --no-web --ros-distro noetic --override-release-repository-push-url https://github.com/at-wat/neonavigation-release.git --debug neonavigation` on `Wed, 16 Apr 2025 03:20:55 -0000`
